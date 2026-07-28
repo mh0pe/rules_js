@@ -12,6 +12,7 @@ load(":pnpm_test.bzl", "pnpm_tests")
 load(":transitive_closure_tests.bzl", "transitive_closure_tests")
 load(":translate_lock_helpers_tests.bzl", "translate_lock_helpers_tests")
 load(":utils_tests.bzl", "utils_tests")
+load(":yarn_lock_extension_test.bzl", "yarn_lock_extension_tests")
 
 npm_link_all_packages()
 
@@ -21,6 +22,8 @@ utils_tests(name = "test_utils")
 npmrc_tests(name = "test_npmrc")
 
 pnpm_tests(name = "test_pnpm")
+
+yarn_lock_extension_tests(name = "test_yarn_lock_extension")
 
 transitive_closure_tests(name = "test_transitive_closure")
 

@@ -6,6 +6,7 @@ npm_link_all_packages()
 build_test(
     name = "test",
     targets = [
+        "@generated-pnpm-lock//:pnpm-lock.yaml",
         ":node_modules",
     ],
 )

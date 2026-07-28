@@ -208,6 +208,22 @@ bzl_library(
 )
 
 bzl_library(
+    name = "yarn_lock_extension",
+    srcs = ["yarn_lock_extension.bzl"],
+    visibility = ["//npm:__subpackages__"],
+)
+
+bzl_library(
+    name = "yarn_lock_repository",
+    srcs = ["yarn_lock_repository.bzl"],
+    visibility = ["//npm:__subpackages__"],
+    deps = [
+        "@bazel_lib//lib:repo_utils",
+        "@bazel_skylib//lib:paths",
+    ],
+)
+
+bzl_library(
     name = "list_sources",
     srcs = ["list_sources.bzl"],
 )

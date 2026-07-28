@@ -17,6 +17,22 @@ pnpm.pnpm(
 )
 use_repo(pnpm, "pnpm-old-version")
 
+yarn_lock = use_extension(
+    "@aspect_rules_js//npm:extensions.bzl",
+    "yarn_lock",
+    dev_dependency = True,
+)
+yarn_lock.generate(
+    name = "generated-pnpm-lock",
+    data = ["//:package.json"],
+    expected_pnpm_lock_sha256 = "257eb130f08d88a503fdcb118e4e33e78f979679f2ed4e405ad0838f1b7e2194",
+    preupdate = ["//:transform_package_json.js"],
+    quiet = False,
+    use_pnpm = "@pnpm-old-version//:package/bin/pnpm.cjs",
+    yarn_lock = "//:yarn.lock",
+)
+use_repo(yarn_lock, "generated-pnpm-lock")
+
 npm = use_extension(
     "@aspect_rules_js//npm:extensions.bzl",
     "npm",
@@ -24,14 +40,9 @@ npm = use_extension(
 )
 npm.npm_translate_lock(
     name = "npm",
-    data = ["//:package.json"],
     npmrc = "//:.npmrc",
-    pnpm_lock = "//:pnpm-lock.yaml",
-    preupdate = ["//:transform_package_json.js"],
+    pnpm_lock = "@generated-pnpm-lock//:pnpm-lock.yaml",
     quiet = False,
-    update_pnpm_lock = True,
-    use_pnpm = "@pnpm-old-version//:package/bin/pnpm.cjs",
     verify_node_modules_ignored = "//:.bazelignore",
-    yarn_lock = "//:yarn.lock",
 )
 use_repo(npm, "npm")

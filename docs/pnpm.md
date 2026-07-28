@@ -130,6 +130,71 @@ adding new dependencies by running the pnpm tool in the source directory outside
 This results in updates to the `pnpm-lock.yaml` file, and then Bazel naturally finds those updates
 next time it reads the file.
 
+### Generate from yarn.lock without a checked-in pnpm lockfile
+
+Bzlmod users whose source of truth is `yarn.lock` can generate the pnpm lockfile
+inside Bazel's external repository cache. This keeps a single checked-in
+lockfile while preserving the pnpm layout semantics consumed by
+`npm_translate_lock`.
+
+First register an exact pnpm version and integrity:
+
+```starlark
+pnpm = use_extension("@aspect_rules_js//npm:extensions.bzl", "pnpm")
+pnpm.pnpm(
+    name = "pnpm-for-yarn-lock",
+    pnpm_version = "10.34.5",
+    pnpm_version_integrity = "sha512-...",
+)
+use_repo(pnpm, "pnpm-for-yarn-lock")
+```
+
+Then declare every text input read by `pnpm import`. Inputs and preprocessing
+scripts are copied into the generated repository, so their ordinary relative
+writes stay out of the source workspace. Preprocessing scripts are trusted
+repository code and must not write to absolute source paths:
+
+```starlark
+yarn_lock = use_extension("@aspect_rules_js//npm:extensions.bzl", "yarn_lock")
+yarn_lock.generate(
+    name = "generated-pnpm-lock",
+    data = [
+        "//:package.json",
+        "//:pnpm-workspace.yaml",
+        "//packages/example:package.json",
+    ],
+    expected_pnpm_lock_sha256 = "<64 lowercase hex characters>",
+    preupdate = ["//tools:prepare-pnpm-import.mjs"],
+    use_pnpm = "@pnpm-for-yarn-lock//:package/bin/pnpm.cjs",
+    yarn_lock = "//:yarn.lock",
+)
+use_repo(yarn_lock, "generated-pnpm-lock")
+```
+
+Finally pass the generated label to the normal npm extension:
+
+```starlark
+npm = use_extension("@aspect_rules_js//npm:extensions.bzl", "npm")
+npm.npm_translate_lock(
+    name = "npm",
+    pnpm_lock = "@generated-pnpm-lock//:pnpm-lock.yaml",
+)
+use_repo(npm, "npm")
+```
+
+The generated repository is invalidated whenever a declared input, preprocessing
+script, or pinned pnpm entry point changes. A file omitted from `data` is
+intentionally invisible to `pnpm import`. Only the root module may register
+generated repositories, preventing dependency modules from claiming names in
+the root repository namespace.
+
+`pnpm import` can consult package registries even when `yarn.lock` contains
+integrities. The rule removes ambient npm/pnpm configuration, runs with isolated
+user configuration directories, and refuses to export the result unless its
+SHA-256 matches `expected_pnpm_lock_sha256`. For initial setup, omit that
+attribute once: the fetch fails after printing the digest to pin. Add the
+reported digest and rerun.
+
 ### update_pnpm_lock
 
 During a migration, you may have a legacy lockfile from another package manager.

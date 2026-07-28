@@ -36,6 +36,10 @@ load("//npm/private:npm_translate_lock_helpers.bzl", npm_translate_lock_helpers 
 load("//npm/private:npmrc.bzl", "parse_npmrc")
 load("//npm/private:pnpm_extension.bzl", "DEFAULT_PNPM_REPO_NAME", "resolve_pnpm_repositories")
 load("//npm/private:pnpm_repository.bzl", "pnpm_repository", _DEFAULT_PNPM_VERSION = "DEFAULT_PNPM_VERSION", _LATEST_PNPM_VERSION = "LATEST_PNPM_VERSION")
+load("//npm/private:tar.bzl", "detect_system_tar")
+load("//npm/private:transitive_closure.bzl", "translate_to_transitive_closure")
+load("//npm/private:yarn_lock_extension.bzl", "resolve_yarn_lock_repositories")
+load("//npm/private:yarn_lock_repository.bzl", "yarn_lock_repository")
 
 DEFAULT_PNPM_VERSION = _DEFAULT_PNPM_VERSION
 LATEST_PNPM_VERSION = _LATEST_PNPM_VERSION
@@ -415,6 +419,75 @@ pnpm = module_extension(
                 "patch_args": attr.string_list(
                     doc = "Arguments for the patch tool. Defaults to [\"-p1\"].",
                     default = ["-p1"],
+                ),
+            },
+        ),
+    },
+)
+
+def _yarn_lock_extension_impl(module_ctx):
+    resolved = resolve_yarn_lock_repositories(module_ctx.modules)
+    if resolved.error:
+        fail(resolved.error)
+
+    for attr in resolved.repositories:
+        yarn_lock_repository(
+            name = attr.name,
+            data = attr.data,
+            expected_pnpm_lock_sha256 = attr.expected_pnpm_lock_sha256,
+            node_toolchain_prefix = attr.node_toolchain_prefix,
+            preupdate = attr.preupdate,
+            quiet = attr.quiet,
+            use_pnpm = attr.use_pnpm,
+            yarn_lock = attr.yarn_lock,
+        )
+
+    return module_ctx.extension_metadata()
+
+yarn_lock = module_extension(
+    doc = """\
+Generates a pnpm lockfile from a Yarn lockfile without writing to the source workspace.
+
+Configure the existing pnpm extension with an explicit version and integrity, then pass
+its pnpm.cjs label to generate.use_pnpm. The resulting repository exports pnpm-lock.yaml
+for consumption by npm.npm_translate_lock.
+""",
+    implementation = _yarn_lock_extension_impl,
+    tag_classes = {
+        "generate": tag_class(
+            attrs = {
+                "data": attr.label_list(
+                    allow_files = True,
+                    doc = "Text inputs copied into the generated repository before pnpm import.",
+                ),
+                "expected_pnpm_lock_sha256": attr.string(
+                    doc = "Expected lowercase SHA-256 of the generated pnpm-lock.yaml. Omit once to discover the digest; unpinned output always fails.",
+                ),
+                "name": attr.string(
+                    mandatory = True,
+                    doc = "Name of the generated repository.",
+                ),
+                "node_toolchain_prefix": attr.string(
+                    default = "nodejs",
+                    doc = "Prefix of the registered rules_nodejs host toolchain repositories.",
+                ),
+                "preupdate": attr.label_list(
+                    allow_files = True,
+                    doc = "Node.js scripts run from the generated repository root before pnpm import.",
+                ),
+                "quiet": attr.bool(
+                    default = True,
+                    doc = "Suppress successful preprocessing and pnpm import output.",
+                ),
+                "use_pnpm": attr.label(
+                    allow_single_file = True,
+                    mandatory = True,
+                    doc = "Pinned pnpm.cjs entry point used to import the Yarn lockfile.",
+                ),
+                "yarn_lock": attr.label(
+                    allow_single_file = True,
+                    mandatory = True,
+                    doc = "Source yarn.lock file.",
                 ),
             },
         ),

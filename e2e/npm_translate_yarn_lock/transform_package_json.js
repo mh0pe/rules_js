@@ -6,13 +6,17 @@ const packageJson = require('./package.json')
 const resolutionsTransforms = {
     '**/@types/node': '@types/node',
 }
-resolutions = Object.keys(packageJson.resolutions)
+const resolutions = Object.keys(packageJson.resolutions)
 for (const k of Object.keys(resolutionsTransforms)) {
     if (resolutions.includes(k)) {
         packageJson.resolutions[resolutionsTransforms[k]] =
             packageJson.resolutions[k]
         delete packageJson.resolutions[k]
     }
+}
+packageJson.pnpm = {
+    ...packageJson.pnpm,
+    onlyBuiltDependencies: [],
 }
 fs.writeFileSync('package.json', JSON.stringify(packageJson, null, 2), 'utf-8')
 console.log(fs.readFileSync('package.json', 'utf-8'))
