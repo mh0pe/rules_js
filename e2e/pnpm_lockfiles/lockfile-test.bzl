@@ -63,6 +63,7 @@ def lockfile_test(npm_link_all_packages, name = None):
             ":node_modules/meaning-of-life",
         ],
         entry_point = "patched-dependencies-test.js",
+        size = "small",
     )
 
     js_test(
@@ -90,6 +91,7 @@ def lockfile_test(npm_link_all_packages, name = None):
             ":node_modules/@isaacs/cliui",
         ],
         entry_point = "aliases-test.js",
+        size = "small",
     )
 
     build_test(
