@@ -2356,7 +2356,10 @@ module.exports = {
       };
     };
 
-    const packageSignature = (pkg, {devirtualize = false} = {}) => {
+    const packageSignature = (
+      pkg,
+      {devirtualize = false, resolutions = null} = {},
+    ) => {
       const locator = devirtualize && structUtils.isVirtualLocator(pkg)
         ? structUtils.devirtualizeLocator(pkg)
         : pkg;
@@ -2364,7 +2367,7 @@ module.exports = {
         const normalized = devirtualize && structUtils.isVirtualDescriptor(descriptor)
           ? structUtils.devirtualizeDescriptor(descriptor)
           : descriptor;
-        return normalized.descriptorHash;
+        return resolutions?.get(normalized.descriptorHash) || normalized.descriptorHash;
       };
       return {
         bin: jsonValue(pkg.bin),
@@ -2606,22 +2609,13 @@ module.exports = {
           if (
             !frozen &&
             resolved &&
-            structUtils.isVirtualLocator(resolved) &&
-            pinnedCompatibilityIdents.has(resolved.identHash)
+            structUtils.isVirtualLocator(resolved)
           ) {
             const physical = structUtils.devirtualizeLocator(resolved);
             const frozenPhysical = frozenNonWorkspacePackages.get(
               physical.locatorHash,
             );
-            const expectedPhysical = expectedPackages.get(
-              physical.locatorHash,
-            );
-            if (
-              frozenPhysical &&
-              expectedPhysical &&
-              JSON.stringify(packageSignature(resolved, {devirtualize: true})) ===
-                JSON.stringify(packageSignature(expectedPhysical))
-            ) {
+            if (frozenPhysical) {
               generatedCompatibilityVirtuals.push(resolved);
               continue;
             }
@@ -2637,13 +2631,20 @@ module.exports = {
 
       const compatibilityAdjustments = [];
       const workspaceAdjustments = [];
+      const effectiveResolutions = new Map([
+        ...frozenResolutions,
+        ...project.storedResolutions,
+      ]);
       for (const [locatorHash, frozen] of frozenPackages) {
         const pkg = project.storedPackages.get(locatorHash);
         if (!pkg)
           continue;
         const workspace = workspaceForLocator(project, frozen);
         const expected = expectedPackages.get(locatorHash);
-        const signatureOptions = {devirtualize: Boolean(workspace)};
+        const signatureOptions = {
+          devirtualize: true,
+          resolutions: effectiveResolutions,
+        };
         const rawSignature = packageSignature(frozen, signatureOptions);
         const expectedSignature = packageSignature(expected, signatureOptions);
         const builtinSignature = workspace
@@ -2871,7 +2872,7 @@ module.exports = {
           const expectedChecksum = project.storedChecksums.get(
             physical.locatorHash,
           );
-          if (!expectedChecksum) {
+          if (!expectedChecksum && !pkg.conditions) {
             throw new Error(
               `yarn.lock has no native checksum for ` +
               `${safeLocatorDisplay(physical)}; refusing to bless fetched bytes`,
@@ -2889,12 +2890,21 @@ module.exports = {
             report,
           });
           try {
-            if (result.checksum !== expectedChecksum) {
+            if (expectedChecksum && result.checksum !== expectedChecksum) {
               throw new Error(
                 `Fetched Yarn checksum differs from yarn.lock for ` +
                 `${safeLocatorDisplay(physical)} (expected ${expectedChecksum}, ` +
                 `got ${result.checksum || "<missing>"})`,
               );
+            }
+            if (!expectedChecksum) {
+              if (!result.checksum) {
+                throw new Error(
+                  `Yarn did not calculate a cache checksum for conditional package ` +
+                  `${safeLocatorDisplay(physical)}`,
+                );
+              }
+              project.storedChecksums.set(physical.locatorHash, result.checksum);
             }
             const manifest = await Manifest.tryFind(result.prefixPath, {
               baseFs: result.packageFs,
