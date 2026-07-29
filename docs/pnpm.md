@@ -151,6 +151,9 @@ yarn_lock.generate(
     # Use binary_data for declared binary local archives.
     binary_data = ["//vendor:example.tgz"],
     expected_graph_sha256 = "<64 lowercase hex characters>",
+    supported_cpu = ["current", "arm64", "x64"],
+    supported_libc = ["current", "glibc", "musl"],
+    supported_os = ["current", "darwin", "linux", "win32"],
     yarn_lock = "//:yarn.lock",
     yarn_version = "4.5.0",
 )
@@ -182,6 +185,9 @@ yarn_lock_repository(
     ],
     binary_data = ["//vendor:example.tgz"],
     expected_graph_sha256 = "<64 lowercase hex characters>",
+    supported_cpu = ["current", "arm64", "x64"],
+    supported_libc = ["current", "glibc", "musl"],
+    supported_os = ["current", "darwin", "linux", "win32"],
     yarn_lock = "//:yarn.lock",
     yarn_version = "4.5.0",
 )

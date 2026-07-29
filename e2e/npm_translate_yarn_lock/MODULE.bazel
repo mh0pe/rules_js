@@ -24,6 +24,9 @@ yarn_lock.generate(
     ],
     expected_graph_sha256 = "129d23f372f07f21175fea9e53c210e880554aebc437d61880618f1e81d32099",
     quiet = False,
+    supported_cpu = ["current"],
+    supported_libc = ["current"],
+    supported_os = ["current"],
     yarn_lock = "//:yarn.lock",
 )
 yarn_lock.generate(

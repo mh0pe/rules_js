@@ -30,11 +30,69 @@ _RESERVED_FILENAMES = [
     _PINNED_YARN_FILENAME,
 ] + YARN_LICENSE_FILENAMES
 
+_SUPPORTED_ARCHITECTURE_VALUES = {
+    "cpu": [
+        "arm",
+        "arm64",
+        "current",
+        "ia32",
+        "ppc64",
+        "riscv64",
+        "s390x",
+        "x64",
+    ],
+    "libc": [
+        "current",
+        "glibc",
+        "musl",
+    ],
+    "os": [
+        "aix",
+        "android",
+        "current",
+        "darwin",
+        "freebsd",
+        "linux",
+        "openbsd",
+        "sunos",
+        "win32",
+    ],
+}
+
 def _label_path(label):
     path = paths.normalize(paths.join(label.package, label.name))
     if path == ".." or path.startswith("../") or "/../" in path:
         fail("input label resolves outside its repository: {}".format(label))
     return path
+
+def _isolated_architecture_configuration(rctx, source_configuration):
+    values = {
+        "cpu": rctx.attr.supported_cpu,
+        "libc": rctx.attr.supported_libc,
+        "os": rctx.attr.supported_os,
+    }
+    if not any(values.values()):
+        return source_configuration
+    if "supportedArchitectures:" in source_configuration:
+        fail(
+            "supported_os/supported_cpu/supported_libc cannot be combined with " +
+            "supportedArchitectures in the source .yarnrc.yml",
+        )
+
+    lines = ["", "# rules_js isolated graph-export target matrix", "supportedArchitectures:"]
+    for name in ["os", "cpu", "libc"]:
+        configured = values[name] if values[name] else ["current"]
+        for value in configured:
+            if value not in _SUPPORTED_ARCHITECTURE_VALUES[name]:
+                fail(
+                    "unsupported Yarn {} architecture '{}'; expected one of {}".format(
+                        name,
+                        value,
+                        _SUPPORTED_ARCHITECTURE_VALUES[name],
+                    ),
+                )
+        lines.append("  {}: [{}]".format(name, ", ".join(configured)))
+    return source_configuration.rstrip() + "\n" + "\n".join(lines) + "\n"
 
 def _plan_inputs(rctx, lock_directory, package_json_path):
     source_repo = rctx.attr.yarn_lock.repo_name
@@ -43,6 +101,7 @@ def _plan_inputs(rctx, lock_directory, package_json_path):
     archive_directory = paths.join(lock_directory, "archives")
     text_inputs = []
     binary_inputs = []
+    isolated_configuration_written = False
 
     for input_label in [rctx.attr.yarn_lock] + rctx.attr.data:
         if input_label.repo_name != source_repo:
@@ -75,8 +134,24 @@ def _plan_inputs(rctx, lock_directory, package_json_path):
         cleanup_paths.append(destination)
         if paths.basename(destination) == ".yarnrc.yml":
             isolated_configuration = paths.join(paths.dirname(destination), _ISOLATED_RC_FILENAME)
-            text_inputs.append((isolated_configuration, content))
+            text_inputs.append((
+                isolated_configuration,
+                _isolated_architecture_configuration(rctx, content),
+            ))
             cleanup_paths.append(isolated_configuration)
+            isolated_configuration_written = True
+
+    if not isolated_configuration_written and any([
+        rctx.attr.supported_cpu,
+        rctx.attr.supported_libc,
+        rctx.attr.supported_os,
+    ]):
+        isolated_configuration = paths.join(lock_directory, _ISOLATED_RC_FILENAME)
+        text_inputs.append((
+            isolated_configuration,
+            _isolated_architecture_configuration(rctx, ""),
+        ))
+        cleanup_paths.append(isolated_configuration)
 
     for input_label in rctx.attr.binary_data:
         if input_label.repo_name != source_repo:
@@ -478,6 +553,15 @@ yarn_lock_repository = repository_rule(
         "quiet": attr.bool(
             default = True,
             doc = "Suppress successful Yarn output.",
+        ),
+        "supported_cpu": attr.string_list(
+            doc = "Bazel-only Yarn target CPUs; defaults to the source configuration.",
+        ),
+        "supported_libc": attr.string_list(
+            doc = "Bazel-only Yarn target libc variants; defaults to the source configuration.",
+        ),
+        "supported_os": attr.string_list(
+            doc = "Bazel-only Yarn target operating systems; defaults to the source configuration.",
         ),
         "yarn_lock": attr.label(
             allow_single_file = True,
