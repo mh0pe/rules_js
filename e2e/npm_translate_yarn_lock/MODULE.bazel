@@ -6,32 +6,41 @@ local_path_override(
 
 bazel_dep(name = "bazel_skylib", version = "1.5.0", dev_dependency = True)
 
-pnpm = use_extension(
-    "@aspect_rules_js//npm:extensions.bzl",
-    "pnpm",
-    dev_dependency = True,
-)
-pnpm.pnpm(
-    name = "pnpm-old-version",
-    pnpm_version = "9.1.1",
-)
-use_repo(pnpm, "pnpm-old-version")
-
 yarn_lock = use_extension(
     "@aspect_rules_js//npm:extensions.bzl",
     "yarn_lock",
     dev_dependency = True,
 )
 yarn_lock.generate(
-    name = "generated-pnpm-lock",
-    data = ["//:package.json"],
-    expected_pnpm_lock_sha256 = "257eb130f08d88a503fdcb118e4e33e78f979679f2ed4e405ad0838f1b7e2194",
-    preupdate = ["//:transform_package_json.js"],
+    name = "generated-yarn-graph",
+    binary_data = ["//:binary_fixture.dat"],
+    data = [
+        "//:.yarnrc.yml",
+        "//:package.json",
+        "//packages/consumer-seven:package.json",
+        "//packages/consumer-six:package.json",
+        "//packages/peer-reader:package.json",
+    ],
+    expected_graph_sha256 = "10da213176dabe34c9f0f16c1f9d3e82e1dd059c5863cfab10a5d6cf18a9aa24",
     quiet = False,
-    use_pnpm = "@pnpm-old-version//:package/bin/pnpm.cjs",
     yarn_lock = "//:yarn.lock",
 )
-use_repo(yarn_lock, "generated-pnpm-lock")
+yarn_lock.generate(
+    name = "generated-yarn-classic-graph",
+    binary_data = ["//:binary_fixture.dat"],
+    data = [
+        "//classic:.yarnrc.yml",
+        "//classic:package.json",
+    ],
+    expected_graph_sha256 = "d7f8c2a5f324fc7a1a3199c76246bd91f57afd1a6a9114233f2afee4b8fe039f",
+    quiet = False,
+    yarn_lock = "//classic:yarn.lock",
+)
+use_repo(
+    yarn_lock,
+    "generated-yarn-classic-graph",
+    "generated-yarn-graph",
+)
 
 npm = use_extension(
     "@aspect_rules_js//npm:extensions.bzl",
@@ -40,9 +49,14 @@ npm = use_extension(
 )
 npm.npm_translate_lock(
     name = "npm",
-    npmrc = "//:.npmrc",
-    pnpm_lock = "@generated-pnpm-lock//:pnpm-lock.yaml",
     quiet = False,
     verify_node_modules_ignored = "//:.bazelignore",
+    yarn_graph = "@generated-yarn-graph//:yarn_graph.json",
 )
-use_repo(npm, "npm")
+npm.npm_translate_lock(
+    name = "npm_classic",
+    quiet = False,
+    verify_node_modules_ignored = "//:.bazelignore",
+    yarn_graph = "@generated-yarn-classic-graph//classic:yarn_graph.json",
+)
+use_repo(npm, "npm", "npm_classic")

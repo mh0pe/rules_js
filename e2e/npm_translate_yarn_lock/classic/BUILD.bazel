@@ -1,0 +1,34 @@
+load("@aspect_rules_js//js:defs.bzl", "js_test")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@npm_classic//:defs.bzl", "npm_link_all_packages")
+load("@npm_classic//classic:semver/package_json.bzl", semver_bin = "bin")
+
+exports_files([
+    ".yarnrc.yml",
+    "package.json",
+    "yarn.lock",
+])
+
+npm_link_all_packages(name = "node_modules")
+
+semver_bin.semver_binary(name = "semver_binary")
+
+build_test(
+    name = "classic_build_test",
+    targets = [
+        ":node_modules/debug",
+        ":node_modules/is-odd",
+        ":node_modules/semver",
+        ":semver_binary",
+    ],
+)
+
+js_test(
+    name = "runtime_test",
+    data = [
+        ":node_modules/debug",
+        ":node_modules/is-odd",
+        ":node_modules/semver",
+    ],
+    entry_point = "runtime_test.js",
+)

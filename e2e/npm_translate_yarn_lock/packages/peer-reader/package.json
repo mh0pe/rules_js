@@ -1,0 +1,8 @@
+{
+  "name": "@rules-js-yarn/peer-reader",
+  "version": "1.0.0",
+  "main": "index.js",
+  "peerDependencies": {
+    "semver": "*"
+  }
+}

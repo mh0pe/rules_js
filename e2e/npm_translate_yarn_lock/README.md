@@ -1,7 +1,6 @@
 # Yarn lockfile integration tests
 
-The Bzlmod test generates `pnpm-lock.yaml` from the checked Yarn lockfile inside
-Bazel's external repository cache, then passes that generated label to
-`npm_translate_lock`. This path exercises the documented pnpm 10 support. The
-WORKSPACE test continues to exercise the legacy `yarn_lock` and
-`update_pnpm_lock` attributes.
+Both Bzlmod and WORKSPACE generate a normalized graph directly from the checked
+Yarn Berry lockfile with the checksum-pinned Yarn runtime. The tests consume the
+cleaned graph repository, extract its verified cache archive, link the package
+and bin into the caller workspace, and run the linked package.

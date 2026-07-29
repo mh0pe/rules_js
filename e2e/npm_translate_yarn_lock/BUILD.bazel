@@ -1,12 +1,42 @@
+load("@aspect_rules_js//js:defs.bzl", "js_test")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@npm//:defs.bzl", "npm_link_all_packages")
+load("@npm//:semver/package_json.bzl", semver_bin = "bin")
+load(":output_hygiene_test.bzl", "output_hygiene_test")
 
 npm_link_all_packages()
 
+semver_bin.semver_binary(name = "semver_binary")
+
 build_test(
-    name = "test",
+    name = "build_test",
     targets = [
-        "@generated-pnpm-lock//:pnpm-lock.yaml",
-        ":node_modules",
+        "@generated-yarn-graph//:archives",
+        "@generated-yarn-graph//:licenses",
+        "@generated-yarn-graph//:yarn_graph.json",
+        ":node_modules/semver",
+        ":semver_binary",
+        "@generated-yarn-classic-graph//classic:archives",
+        "@generated-yarn-classic-graph//classic:licenses",
+        "@generated-yarn-classic-graph//classic:yarn_graph.json",
     ],
+)
+
+js_test(
+    name = "runtime_test",
+    data = [
+        ":binary_fixture.dat",
+        ":node_modules/semver",
+    ],
+    entry_point = "runtime_test.js",
+)
+
+output_hygiene_test(
+    name = "output_hygiene_test",
+    target = "@generated-yarn-graph//:unexpected_files",
+)
+
+output_hygiene_test(
+    name = "classic_output_hygiene_test",
+    target = "@generated-yarn-classic-graph//classic:unexpected_files",
 )
