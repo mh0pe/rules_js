@@ -2443,6 +2443,40 @@ module.exports = {
       return pkg;
     };
 
+    const patchSourceLocatorHashes = packages => {
+      const hashes = new Set();
+      for (const pkg of packages.values()) {
+        const locator = structUtils.convertPackageToLocator(pkg);
+        const range = structUtils.parseRange(locator.reference);
+        if (range.protocol !== "patch:" || range.source === null)
+          continue;
+        hashes.add(structUtils.parseLocator(range.source).locatorHash);
+      }
+      return hashes;
+    };
+
+    const lockWithoutPatchSourceRecords = (content, sourceHashes) => {
+      const parsed = parseSyml(content);
+      for (const [selector, record] of Object.entries(parsed)) {
+        if (
+          selector === "__metadata" ||
+          !record ||
+          typeof record.resolution !== "string"
+        ) {
+          continue;
+        }
+        let locator;
+        try {
+          locator = structUtils.parseLocator(record.resolution);
+        } catch {
+          continue;
+        }
+        if (sourceHashes.has(locator.locatorHash))
+          delete parsed[selector];
+      }
+      return JSON.stringify(jsonValue(parsed));
+    };
+
     const validateResolvedPackagesAgainstLock = async (
       project,
       frozenPackages,
@@ -2455,7 +2489,9 @@ module.exports = {
         project.configuration,
       );
       const allExtensions = await project.configuration.getPackageExtensions();
+      const resolvedPatchSources = patchSourceLocatorHashes(project.storedPackages);
       const expectedPackages = new Map();
+      const expectedBuiltinPackages = new Map();
       const pinnedCompatibilityIdents = new Set();
       for (const [locatorHash, frozen] of frozenPackages) {
         const expected = await prepareWithPinnedCompatibility(
@@ -2463,17 +2499,23 @@ module.exports = {
           frozen,
           resolver,
           report,
-          workspaceForLocator(project, frozen)
-            ? allExtensions
-            : builtinExtensions,
+          allExtensions,
         );
         expectedPackages.set(locatorHash, expected);
         if (!workspaceForLocator(project, frozen)) {
+          const expectedBuiltin = await prepareWithPinnedCompatibility(
+            project,
+            frozen,
+            resolver,
+            report,
+            builtinExtensions,
+          );
+          expectedBuiltinPackages.set(locatorHash, expectedBuiltin);
           const rawSignature = packageSignature(frozen);
-          const expectedSignature = packageSignature(expected);
-          if (Object.keys(expectedSignature).some(
+          const expectedBuiltinSignature = packageSignature(expectedBuiltin);
+          if (Object.keys(expectedBuiltinSignature).some(
             field => JSON.stringify(rawSignature[field]) !==
-              JSON.stringify(expectedSignature[field]),
+              JSON.stringify(expectedBuiltinSignature[field]),
           )) {
             pinnedCompatibilityIdents.add(frozen.identHash);
           }
@@ -2500,6 +2542,12 @@ module.exports = {
         const frozenLocatorHash = frozenNonWorkspaceResolutions.get(descriptorHash);
         const resolvedLocatorHash = resolvedNonWorkspaceResolutions.get(descriptorHash);
         if (frozenLocatorHash !== resolvedLocatorHash) {
+          if (
+            resolvedLocatorHash === undefined &&
+            resolvedPatchSources.has(frozenLocatorHash)
+          ) {
+            continue;
+          }
           const descriptor =
             frozenDescriptors.get(descriptorHash) ||
             project.storedDescriptors.get(descriptorHash);
@@ -2554,6 +2602,8 @@ module.exports = {
         const frozen = frozenNonWorkspacePackages.get(locatorHash);
         const resolved = resolvedNonWorkspacePackages.get(locatorHash);
         if (!frozen || !resolved) {
+          if (frozen && resolvedPatchSources.has(locatorHash))
+            continue;
           if (
             !frozen &&
             resolved &&
@@ -2597,24 +2647,37 @@ module.exports = {
         const signatureOptions = {devirtualize: Boolean(workspace)};
         const rawSignature = packageSignature(frozen, signatureOptions);
         const expectedSignature = packageSignature(expected, signatureOptions);
+        const builtinSignature = workspace
+          ? rawSignature
+          : packageSignature(
+            expectedBuiltinPackages.get(locatorHash),
+            signatureOptions,
+          );
         const actualSignature = packageSignature(pkg, signatureOptions);
         const signatureFields = Object.keys(expectedSignature).filter(
           field => field !== "version" || !workspace,
         );
         const compatibilityFields = signatureFields.filter(
           field => JSON.stringify(rawSignature[field]) !==
-            JSON.stringify(expectedSignature[field]),
+            JSON.stringify(builtinSignature[field]),
         );
         if (compatibilityFields.length > 0) {
-          const adjustment = {
+          compatibilityAdjustments.push({
             fields: compatibilityFields.sort(),
             locator: safeLocatorDisplay(frozen),
             locator_hash: locatorHash,
-          };
-          if (workspace)
-            workspaceAdjustments.push(adjustment);
-          else
-            compatibilityAdjustments.push(adjustment);
+          });
+        }
+        const workspaceExtensionFields = signatureFields.filter(
+          field => JSON.stringify(builtinSignature[field]) !==
+            JSON.stringify(expectedSignature[field]),
+        );
+        if (workspaceExtensionFields.length > 0) {
+          workspaceAdjustments.push({
+            fields: workspaceExtensionFields.sort(),
+            locator: safeLocatorDisplay(frozen),
+            locator_hash: locatorHash,
+          });
         }
         const differingFields = signatureFields.filter(
           field => JSON.stringify(actualSignature[field]) !==
@@ -3017,14 +3080,29 @@ module.exports = {
               closedResolution.resolver,
               report,
             );
-            if (
-              source.version === 8 &&
-              canonicalGeneratedLock(project.generateLockfile()) !==
-                canonicalGeneratedLock(originalLock)
-            ) {
-              throw new Error(
-                "Resolved Yarn v8 graph would regenerate yarn.lock with different bytes",
+            if (source.version === 8) {
+              const regeneratedLock = canonicalGeneratedLock(
+                project.generateLockfile(),
               );
+              const originalCanonicalLock = canonicalGeneratedLock(originalLock);
+              const resolvedPatchSources = patchSourceLocatorHashes(
+                project.storedPackages,
+              );
+              const lockMatches = resolvedPatchSources.size === 0
+                ? regeneratedLock === originalCanonicalLock
+                : lockWithoutPatchSourceRecords(
+                  regeneratedLock,
+                  resolvedPatchSources,
+                ) === lockWithoutPatchSourceRecords(
+                  originalCanonicalLock,
+                  resolvedPatchSources,
+                );
+              if (!lockMatches) {
+                throw new Error(
+                  "Resolved Yarn v8 graph would regenerate yarn.lock with " +
+                    "differences beyond normalized patch-source records",
+                );
+              }
             }
             buildEvidence = await fetchAllAccessible(
               project,
