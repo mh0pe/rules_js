@@ -173,31 +173,13 @@ def _plain_username_password_test_impl(ctx):
 def _env_var_token_test_impl(ctx):
     env = unittest.begin(ctx)
 
-    renv = {}
+    renv = {
+        "TOKEN1": "1234",
+    }
     rctx = struct(
         getenv = renv.get,
     )
 
-    asserts.equals(
-        env,
-        (
-            {},
-            {
-                "registry1": {
-                    "bearer": "TOKEN1",
-                },
-            },
-        ),
-        helpers.get_npm_auth(
-            {
-                "//registry1/:_authToken": "$TOKEN1",
-            },
-            "",
-            rctx,
-        ),
-    )
-
-    renv["TOKEN1"] = "1234"
     asserts.equals(
         env,
         (

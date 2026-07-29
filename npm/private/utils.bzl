@@ -275,23 +275,44 @@ STDERR:
         )
         fail(msg)
 
-def _replace_npmrc_token_envvar(token, npmrc_path, rctx):
-    # A token can be a reference to an environment variable
-    if token.startswith("$"):
-        # ${NPM_TOKEN} -> NPM_TOKEN
-        # $NPM_TOKEN -> NPM_TOKEN
-        token = token.removeprefix("$").removeprefix("{").removesuffix("}")
-        if rctx.getenv(token) != None:
-            token = rctx.getenv(token)
-        else:
-            # buildifier: disable=print
-            print("""
+def _resolve_npmrc_token_envvar(token, getenv):
+    """Resolves an npmrc token without producing output."""
+    if not token.startswith("$"):
+        return struct(
+            missing_envvar = None,
+            token = token,
+        )
+
+    # ${NPM_TOKEN} -> NPM_TOKEN
+    # $NPM_TOKEN -> NPM_TOKEN
+    envvar = token.removeprefix("$").removeprefix("{").removesuffix("}")
+    value = getenv(envvar)
+    return struct(
+        missing_envvar = envvar if value == None else None,
+        token = envvar if value == None else value,
+    )
+
+def _format_npmrc_missing_envvar_warning(npmrc_path, envvar):
+    """Formats the warning emitted when an npmrc environment token is absent."""
+    return """
 WARNING: Issue while reading "{npmrc}". Failed to replace env in config: ${{{token}}}
 """.format(
-                npmrc = npmrc_path,
-                token = token,
-            ))
-    return token
+        npmrc = npmrc_path,
+        token = envvar,
+    )
+
+def _replace_npmrc_token_envvar(token, npmrc_path, rctx):
+    if not token.startswith("$"):
+        return token
+
+    resolved = _resolve_npmrc_token_envvar(token, rctx.getenv)
+    if resolved.missing_envvar != None:
+        # buildifier: disable=print
+        print(_format_npmrc_missing_envvar_warning(
+            npmrc_path,
+            resolved.missing_envvar,
+        ))
+    return resolved.token
 
 def _default_external_repository_action_cache():
     return DEFAULT_EXTERNAL_REPOSITORY_ACTION_CACHE
@@ -411,5 +432,7 @@ utils = struct(
 
 # Exported only to be tested
 utils_test = struct(
+    format_npmrc_missing_envvar_warning = _format_npmrc_missing_envvar_warning,
     parse_package_name = _parse_package_name,
+    resolve_npmrc_token_envvar = _resolve_npmrc_token_envvar,
 )

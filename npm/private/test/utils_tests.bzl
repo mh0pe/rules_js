@@ -2,6 +2,7 @@
 See https://docs.bazel.build/versions/main/skylark/testing.html#for-testing-starlark-utilities
 """
 
+load("@bazel_skylib//lib:partial.bzl", "partial")
 load("@bazel_skylib//lib:unittest.bzl", "asserts", "unittest")
 load("//npm/private:utils.bzl", "utils", "utils_test")
 
@@ -219,6 +220,35 @@ def test_hex_to_base64(ctx):
         )
     return unittest.end(env)
 
+def test_npmrc_token_envvar_resolution(ctx):
+    """Tests missing npmrc environment-token fallback without emitting output.
+
+    Args:
+      ctx: Skylib unit-test rule context.
+
+    Returns:
+      The completed Skylib unit-test result.
+    """
+    env = unittest.begin(ctx)
+    resolved = utils_test.resolve_npmrc_token_envvar(
+        "$TOKEN1",
+        {}.get,
+    )
+
+    asserts.equals(env, "TOKEN1", resolved.token)
+    asserts.equals(env, "TOKEN1", resolved.missing_envvar)
+    asserts.equals(
+        env,
+        """
+WARNING: Issue while reading "". Failed to replace env in config: ${TOKEN1}
+""",
+        utils_test.format_npmrc_missing_envvar_warning(
+            "",
+            resolved.missing_envvar,
+        ),
+    )
+    return unittest.end(env)
+
 t2_test = unittest.make(test_package_store_and_target_name)
 t3_test = unittest.make(test_friendly_name)
 t6_test = unittest.make(test_parse_package_name)
@@ -226,15 +256,17 @@ t7_test = unittest.make(test_npm_registry_download_url)
 t8_test = unittest.make(test_npm_registry_url)
 t9_test = unittest.make(test_package_store_name_link_versions)
 t10_test = unittest.make(test_hex_to_base64)
+t11_test = unittest.make(test_npmrc_token_envvar_resolution)
 
 def utils_tests(name):
     unittest.suite(
         name,
-        t2_test,
-        t3_test,
-        t6_test,
-        t7_test,
-        t8_test,
-        t9_test,
-        t10_test,
+        partial.make(t2_test, size = "small"),
+        partial.make(t3_test, size = "small"),
+        partial.make(t6_test, size = "small"),
+        partial.make(t7_test, size = "small"),
+        partial.make(t8_test, size = "small"),
+        partial.make(t9_test, size = "small"),
+        partial.make(t10_test, size = "small"),
+        partial.make(t11_test, size = "small"),
     )
