@@ -149,8 +149,8 @@ next time it reads the file.
 
 `rules_js` can use a checked-in `yarn.lock` without running pnpm or creating a
 `pnpm-lock.yaml`. The first repository phase runs the checksum-pinned official
-Yarn 4.5.0 bundle to produce a normalized `yarn_graph.json` plus verified
-archives. The second phase passes that graph to `npm_translate_lock`.
+Yarn 4.5.0 or 4.18.0 bundle to produce a normalized `yarn_graph.json` plus
+verified archives. The second phase passes that graph to `npm_translate_lock`.
 
 With Bzlmod:
 
@@ -170,7 +170,7 @@ yarn_lock.generate(
     supported_libc = ["current", "glibc", "musl"],
     supported_os = ["current", "darwin", "linux", "win32"],
     yarn_lock = "//:yarn.lock",
-    yarn_version = "4.5.0",
+    yarn_version = "4.18.0",
 )
 use_repo(yarn_lock, "generated-yarn-graph")
 
@@ -182,13 +182,26 @@ npm.npm_translate_lock(
 use_repo(npm, "npm")
 ```
 
-The producer supports Yarn Classic v1 and Berry lock metadata versions 4, 6,
-and 8. It does not invoke Corepack, pnpm, `yarn install`, a Yarn linker, or
-package lifecycle scripts. Text inputs in `data` and byte-for-byte copied
-`binary_data` inputs are materialized in the generated repository; binary
-source symlinks are rejected and the copy is SHA-256 checked before export.
-Absolute or escaping local inputs and executable Git or `exec:` fetch locators
-are rejected.
+The graph schema accepts Yarn Classic v1 and Berry lock metadata versions 4, 6,
+8, 9, and 10. The exact exporter runtime is selected independently from the
+project's `packageManager` declaration and must be one of the reviewed 4.5.0 or
+4.18.0 releases:
+
+| Source lock          | Reviewed exporter runtime | Producer proof                                   |
+| -------------------- | ------------------------- | ------------------------------------------------ |
+| Classic v1           | 4.5.0                     | checked-in Classic end-to-end fixture            |
+| Berry v4, v6, and v8 | 4.5.0 or 4.18.0           | parser contract exercised with both runtimes     |
+| Berry v9             | 4.18.0                    | parser contract plus checked-in producer fixture |
+| Berry v10            | 4.18.0                    | checked-in Berry end-to-end fixture              |
+
+The selected runtime must also recognize every setting in the source
+`.yarnrc.yml`; source-format acceptance does not make newer settings compatible
+with an older runtime. The producer does not invoke Corepack, pnpm,
+`yarn install`, a Yarn linker, or package lifecycle scripts. Text inputs in
+`data` and byte-for-byte copied `binary_data` inputs are materialized in the
+generated repository; binary source symlinks are rejected and the copy is
+SHA-256 checked before export. Absolute or escaping local inputs and executable
+Git or `exec:` fetch locators are rejected.
 
 The generated graph and each archive are independently verified. Berry packages
 retain their native Yarn cache checksum. Classic packages retain canonical SRI
@@ -201,7 +214,7 @@ graph for review, prints its SHA-256, and refuses to let the unpinned repository
 be consumed. Add the reviewed digest and rerun.
 
 Yarn configuration is graph provenance, not linker emulation. In particular,
-the pinned Yarn 4.5.0 pnpm linker has a fixed project-local
+the reviewed pinned Yarn runtimes' pnpm linker has a fixed project-local
 `node_modules/.store`; `pnpmStoreFolder` is unsupported. Accepting
 `nodeLinker: pnp`, `node-modules`, or `pnpm` records validated metadata only.
 `rules_js` still materializes its own Bazel `node_modules` model and does not

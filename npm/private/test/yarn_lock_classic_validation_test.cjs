@@ -4,6 +4,8 @@ const {
     __internal: {
         assertClassicSelectorAcceptsLockedVersion,
         assertNoClassicSelectiveResolutions,
+        childReachabilityState,
+        reachabilityMetadata,
         rejectPinnedYarnUnsupportedSettings,
     },
 } = require('../yarn_lock_exporter.cjs')
@@ -56,5 +58,13 @@ assert.throws(
             { pnpmStoreFolder: '.cache/.store' },
             '/generated/project/.yarnrc.yml'
         ),
-    /pinned Yarn 4\.5\.0.*fixed project-local node_modules\/\.store/
+    /reviewed pinned Yarn runtimes.*fixed project-local node_modules\/\.store/
 )
+
+assert.equal(childReachabilityState('dev', true), 'dev_optional')
+assert.equal(childReachabilityState('dev_optional', false), 'dev_optional')
+assert.deepEqual(reachabilityMetadata(new Set(['dev_optional'])), {
+    dev_only: true,
+    optional: true,
+    prod_reachable: false,
+})

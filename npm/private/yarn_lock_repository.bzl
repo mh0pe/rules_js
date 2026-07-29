@@ -575,9 +575,9 @@ def _yarn_lock_repository_impl(rctx):
         _cleanup_repository_outputs(rctx, cleanup_paths)
         fail("native Yarn graph exporter did not generate '{}'".format(graph_path))
     graph_contents = rctx.read(graph_path)
-    if not graph_contents.strip() or '"schema_version": 1' not in graph_contents:
+    if not graph_contents.strip() or '"schema_version": 2' not in graph_contents:
         _cleanup_repository_outputs(rctx, cleanup_paths)
-        fail("generated '{}' is not a valid non-empty schema-v1 graph".format(_GRAPH_FILENAME))
+        fail("generated '{}' is not a valid non-empty schema-v2 graph".format(_GRAPH_FILENAME))
 
     _cleanup_repository_outputs(rctx, cleanup_paths)
 
@@ -677,7 +677,7 @@ yarn_lock_repository = repository_rule(
         ),
         "yarn_version": attr.string(
             default = "4.5.0",
-            doc = "Exact reviewed official Yarn runtime version.",
+            doc = "Exact reviewed official Yarn runtime version (4.5.0 or 4.18.0), independently pinned from packageManager.",
         ),
     },
     doc = """\

@@ -11,6 +11,8 @@ _SOURCE_LOCK_VERSIONS = {
     "berry-v4": 4,
     "berry-v6": 6,
     "berry-v8": 8,
+    "berry-v9": 9,
+    "berry-v10": 10,
     "classic-v1": 1,
 }
 
@@ -73,6 +75,7 @@ def _package(resolution):
         "optional_dependencies": {},
         "peer_dependencies": {},
         "peer_dependencies_meta": {},
+        "prod_reachable": True,
         "requires_build": False,
         "resolution": resolution,
         "version": _PACKAGE_VERSION,
@@ -85,7 +88,8 @@ def _graph(
         source_format,
         node_linker = None,
         pnp_mode = "strict",
-        pnp_fallback_mode = "dependencies-only"):
+        pnp_fallback_mode = "dependencies-only",
+        exporter_yarn_version = "4.5.0"):
     is_classic = source_format == "classic-v1"
     locator_hash = "b" * 128
     if is_classic:
@@ -138,7 +142,7 @@ def _graph(
                 "name": "yarn",
                 "version": declared_version,
             }],
-            "exporter_yarn_version": "4.5.0",
+            "exporter_yarn_version": exporter_yarn_version,
             "lifecycle": {
                 "package_manifests_inspected": True,
                 "scripts_executed": False,
@@ -152,27 +156,57 @@ def _graph(
             _PACKAGE_KEY: _package(resolution),
         },
         "patched_dependencies": {},
-        "schema_version": 1,
+        "schema_version": 2,
         "source_format": source_format,
     }
 
+def _reachability_package(
+        graph,
+        name,
+        locator_hash_character,
+        dev_only = False,
+        optional = False,
+        prod_reachable = False):
+    version = "1.0.0"
+    package = dict(graph["packages"][_PACKAGE_KEY])
+    resolution = dict(package["resolution"])
+    archive_extension = ".tgz" if resolution["archive"].endswith(".tgz") else ".zip"
+    resolution["archive"] = "archives/{}{}".format(name, archive_extension)
+    resolution["locator"] = "{}@npm:{}".format(name, version)
+    resolution["locator_hash"] = locator_hash_character * 128
+    package["dependencies"] = {}
+    package["dev_only"] = dev_only
+    package["friendly_version"] = version
+    package["name"] = name
+    package["optional"] = optional
+    package["optional_dependencies"] = {}
+    package["prod_reachable"] = prod_reachable
+    package["resolution"] = resolution
+    package["version"] = version
+    return package
+
 def _valid_berry_graph_test_impl(ctx):
     env = unittest.begin(ctx)
-    for source_format in ["berry-v4", "berry-v6", "berry-v8"]:
-        importers, packages, error = yarn_graph.parse_json(
-            json.encode(_graph(source_format)),
-            _GRAPH_LABEL,
-        )
+    for source_format in ["berry-v4", "berry-v6", "berry-v8", "berry-v9", "berry-v10"]:
+        exporter_yarn_versions = ["4.18.0"] if source_format in ["berry-v9", "berry-v10"] else ["4.5.0", "4.18.0"]
+        for exporter_yarn_version in exporter_yarn_versions:
+            importers, packages, error = yarn_graph.parse_json(
+                json.encode(_graph(
+                    source_format,
+                    exporter_yarn_version = exporter_yarn_version,
+                )),
+                _GRAPH_LABEL,
+            )
 
-        asserts.equals(env, None, error)
-        asserts.equals(env, [_PACKAGE_KEY], packages.keys())
-        asserts.equals(env, "yarn-cache", packages[_PACKAGE_KEY]["resolution"]["type"])
-        asserts.equals(
-            env,
-            _GRAPH_LABEL.relative("archives/left-pad.zip"),
-            packages[_PACKAGE_KEY]["resolution"]["archive"],
-        )
-        asserts.equals(env, _PACKAGE_KEY, importers["."]["dependencies"][_PACKAGE_NAME])
+            asserts.equals(env, None, error)
+            asserts.equals(env, [_PACKAGE_KEY], packages.keys())
+            asserts.equals(env, "yarn-cache", packages[_PACKAGE_KEY]["resolution"]["type"])
+            asserts.equals(
+                env,
+                _GRAPH_LABEL.relative("archives/left-pad.zip"),
+                packages[_PACKAGE_KEY]["resolution"]["archive"],
+            )
+            asserts.equals(env, _PACKAGE_KEY, importers["."]["dependencies"][_PACKAGE_NAME])
     return unittest.end(env)
 
 def _conditions_and_dependency_filtering_test_impl(ctx):
@@ -193,6 +227,7 @@ def _conditions_and_dependency_filtering_test_impl(ctx):
     dev_graph["importers"]["."]["dependencies"] = {}
     dev_graph["importers"]["."]["dev_dependencies"] = {_PACKAGE_NAME: _PACKAGE_VERSION}
     dev_graph["packages"][_PACKAGE_KEY]["dev_only"] = True
+    dev_graph["packages"][_PACKAGE_KEY]["prod_reachable"] = False
     dev_importers, dev_packages, error = yarn_graph.parse_json(
         json.encode(dev_graph),
         _GRAPH_LABEL,
@@ -207,6 +242,7 @@ def _conditions_and_dependency_filtering_test_impl(ctx):
     optional_graph["importers"]["."]["dependencies"] = {}
     optional_graph["importers"]["."]["optional_dependencies"] = {_PACKAGE_NAME: _PACKAGE_VERSION}
     optional_graph["packages"][_PACKAGE_KEY]["optional"] = True
+    optional_graph["packages"][_PACKAGE_KEY]["prod_reachable"] = False
     optional_importers, optional_packages, error = yarn_graph.parse_json(
         json.encode(optional_graph),
         _GRAPH_LABEL,
@@ -216,6 +252,115 @@ def _conditions_and_dependency_filtering_test_impl(ctx):
     asserts.equals(env, None, error)
     asserts.equals(env, {}, optional_importers["."]["optional_dependencies"])
     asserts.equals(env, {}, optional_packages)
+
+    return unittest.end(env)
+
+def _mixed_reachability_filtering_test_impl(ctx):
+    env = unittest.begin(ctx)
+    prod_key = "prod@1.0.0"
+    dev_parent_key = "dev-parent@1.0.0"
+    optional_parent_key = "optional-parent@1.0.0"
+    dev_optional_key = "dev-optional@1.0.0"
+    mixed_key = "mixed@1.0.0"
+    unreachable_key = "unreachable@1.0.0"
+
+    filter_matrix = [
+        (
+            False,
+            False,
+            [
+                dev_optional_key,
+                dev_parent_key,
+                mixed_key,
+                optional_parent_key,
+                prod_key,
+                unreachable_key,
+            ],
+        ),
+        (True, False, [mixed_key, optional_parent_key, prod_key, unreachable_key]),
+        (False, True, [dev_parent_key, mixed_key, prod_key, unreachable_key]),
+        (True, True, [prod_key]),
+    ]
+
+    for source_format in ["classic-v1", "berry-v8"]:
+        graph = _graph(source_format)
+        prod = _reachability_package(graph, "prod", "1", prod_reachable = True)
+        dev_parent = _reachability_package(graph, "dev-parent", "2", dev_only = True)
+        optional_parent = _reachability_package(graph, "optional-parent", "3", optional = True)
+        dev_optional = _reachability_package(
+            graph,
+            "dev-optional",
+            "4",
+            dev_only = True,
+            optional = True,
+        )
+        mixed = _reachability_package(graph, "mixed", "5")
+        unreachable = _reachability_package(graph, "unreachable", "6")
+        dev_parent["dependencies"] = {"mixed": "1.0.0"}
+        dev_parent["optional_dependencies"] = {"dev-optional": "1.0.0"}
+        optional_parent["dependencies"] = {"mixed": "1.0.0"}
+        graph["packages"] = {
+            dev_optional_key: dev_optional,
+            dev_parent_key: dev_parent,
+            mixed_key: mixed,
+            optional_parent_key: optional_parent,
+            prod_key: prod,
+            unreachable_key: unreachable,
+        }
+        graph["importers"]["."]["dependencies"] = {"prod": "1.0.0"}
+        graph["importers"]["."]["dev_dependencies"] = {"dev-parent": "1.0.0"}
+        graph["importers"]["."]["optional_dependencies"] = {"optional-parent": "1.0.0"}
+
+        for no_dev, no_optional, expected_package_keys in filter_matrix:
+            importers, packages, error = yarn_graph.parse_json(
+                json.encode(graph),
+                _GRAPH_LABEL,
+                no_dev,
+                no_optional,
+            )
+            asserts.equals(env, None, error)
+            asserts.equals(env, expected_package_keys, sorted(packages.keys()))
+            asserts.equals(
+                env,
+                {} if no_dev else {"dev-parent": dev_parent_key},
+                importers["."]["dev_dependencies"],
+            )
+            asserts.equals(
+                env,
+                {} if no_optional else {"optional-parent": optional_parent_key},
+                importers["."]["optional_dependencies"],
+            )
+            asserts.equals(env, {"prod": prod_key}, importers["."]["dependencies"])
+
+            if dev_parent_key in packages:
+                asserts.equals(
+                    env,
+                    {"mixed": mixed_key},
+                    packages[dev_parent_key]["dependencies"],
+                )
+                asserts.equals(
+                    env,
+                    {} if no_optional else {"dev-optional": dev_optional_key},
+                    packages[dev_parent_key]["optional_dependencies"],
+                )
+            if optional_parent_key in packages:
+                asserts.equals(
+                    env,
+                    {"mixed": mixed_key},
+                    packages[optional_parent_key]["dependencies"],
+                )
+            if mixed_key in packages:
+                asserts.equals(
+                    env,
+                    False,
+                    packages[mixed_key]["prod_reachable"],
+                )
+            if unreachable_key in packages:
+                asserts.equals(
+                    env,
+                    False,
+                    packages[unreachable_key]["prod_reachable"],
+                )
 
     return unittest.end(env)
 
@@ -249,13 +394,13 @@ def _linker_pnp_matrix_test_impl(ctx):
 def _source_schema_rejection_test_impl(ctx):
     env = unittest.begin(ctx)
 
-    unknown_schema = _graph("berry-v8")
-    unknown_schema["source_format"] = "berry-v10"
-    unknown_schema["metadata"]["source_lock_version"] = 10
+    unknown_schema = _graph("berry-v10")
+    unknown_schema["source_format"] = "berry-v12"
+    unknown_schema["metadata"]["source_lock_version"] = 12
     _, _, error = yarn_graph.parse_json(json.encode(unknown_schema), _GRAPH_LABEL)
     asserts.equals(
         env,
-        "Yarn graph parse error: unsupported source_format berry-v10",
+        "Yarn graph parse error: unsupported source_format berry-v12",
         error,
     )
 
@@ -265,6 +410,35 @@ def _source_schema_rejection_test_impl(ctx):
     asserts.equals(
         env,
         "Yarn graph parse error: metadata.source_lock_version 8 is inconsistent with source_format berry-v6",
+        error,
+    )
+
+    for source_format in ["berry-v9", "berry-v10"]:
+        unsupported_exporter = _graph(
+            source_format,
+            exporter_yarn_version = "4.5.0",
+        )
+        _, _, error = yarn_graph.parse_json(
+            json.encode(unsupported_exporter),
+            _GRAPH_LABEL,
+        )
+        asserts.equals(
+            env,
+            "Yarn graph parse error: metadata.exporter_yarn_version 4.5.0 is not supported for source_format {}; expected 4.18.0".format(source_format),
+            error,
+        )
+
+    unsupported_classic_exporter = _graph(
+        "classic-v1",
+        exporter_yarn_version = "4.18.0",
+    )
+    _, _, error = yarn_graph.parse_json(
+        json.encode(unsupported_classic_exporter),
+        _GRAPH_LABEL,
+    )
+    asserts.equals(
+        env,
+        "Yarn graph parse error: metadata.exporter_yarn_version 4.18.0 is not supported for source_format classic-v1; expected 4.5.0",
         error,
     )
     return unittest.end(env)
@@ -294,6 +468,7 @@ def _valid_classic_graph_test_impl(ctx):
 _valid_berry_graph_test = unittest.make(_valid_berry_graph_test_impl)
 _valid_classic_graph_test = unittest.make(_valid_classic_graph_test_impl)
 _conditions_and_dependency_filtering_test = unittest.make(_conditions_and_dependency_filtering_test_impl)
+_mixed_reachability_filtering_test = unittest.make(_mixed_reachability_filtering_test_impl)
 _linker_pnp_matrix_test = unittest.make(_linker_pnp_matrix_test_impl)
 _source_schema_rejection_test = unittest.make(_source_schema_rejection_test_impl)
 
@@ -326,10 +501,12 @@ def _failure_case(name, content, expected_message):
     _parse_subject(
         name = subject,
         content = content,
+        tags = ["manual"],
     )
     _parse_failure_test(
         name = name,
         expected_message = expected_message,
+        size = "small",
         target_under_test = ":" + subject,
     )
 
@@ -342,28 +519,70 @@ def yarn_graph_tests(name):
     tests = []
 
     valid_berry = name + "_valid_berry_test"
-    _valid_berry_graph_test(name = valid_berry)
+    _valid_berry_graph_test(
+        name = valid_berry,
+        size = "small",
+    )
     tests.append(":" + valid_berry)
 
     valid_classic = name + "_valid_classic_test"
-    _valid_classic_graph_test(name = valid_classic)
+    _valid_classic_graph_test(
+        name = valid_classic,
+        size = "small",
+    )
     tests.append(":" + valid_classic)
 
     conditions_and_filtering = name + "_conditions_and_dependency_filtering_test"
-    _conditions_and_dependency_filtering_test(name = conditions_and_filtering)
+    _conditions_and_dependency_filtering_test(
+        name = conditions_and_filtering,
+        size = "small",
+    )
     tests.append(":" + conditions_and_filtering)
 
+    mixed_reachability_filtering = name + "_mixed_reachability_filtering_test"
+    _mixed_reachability_filtering_test(
+        name = mixed_reachability_filtering,
+        size = "small",
+    )
+    tests.append(":" + mixed_reachability_filtering)
+
     linker_pnp_matrix = name + "_linker_pnp_matrix_test"
-    _linker_pnp_matrix_test(name = linker_pnp_matrix)
+    _linker_pnp_matrix_test(
+        name = linker_pnp_matrix,
+        size = "small",
+    )
     tests.append(":" + linker_pnp_matrix)
 
     source_schema_rejection = name + "_source_schema_rejection_test"
-    _source_schema_rejection_test(name = source_schema_rejection)
+    _source_schema_rejection_test(
+        name = source_schema_rejection,
+        size = "small",
+    )
     tests.append(":" + source_schema_rejection)
 
     malformed = name + "_malformed_json_test"
     _failure_case(malformed, "{", "unexpected end of file")
     tests.append(":" + malformed)
+
+    missing_prod_reachable_graph = _graph("berry-v8")
+    missing_prod_reachable_graph["packages"][_PACKAGE_KEY].pop("prod_reachable")
+    missing_prod_reachable = name + "_missing_prod_reachable_test"
+    _failure_case(
+        missing_prod_reachable,
+        json.encode(missing_prod_reachable_graph),
+        "packages[{}] is missing required fields: prod_reachable".format(_PACKAGE_KEY),
+    )
+    tests.append(":" + missing_prod_reachable)
+
+    contradictory_reachability_graph = _graph("berry-v8")
+    contradictory_reachability_graph["packages"][_PACKAGE_KEY]["dev_only"] = True
+    contradictory_reachability = name + "_contradictory_reachability_test"
+    _failure_case(
+        contradictory_reachability,
+        json.encode(contradictory_reachability_graph),
+        "with prod_reachable=true cannot be dev_only or optional",
+    )
+    tests.append(":" + contradictory_reachability)
 
     unknown_graph = _graph("berry-v8")
     unknown_graph["unexpected"] = True

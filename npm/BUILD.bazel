@@ -71,6 +71,8 @@ bzl_library(
         "//npm/private:npmrc",
         "//npm/private:pnpm_extension",
         "//npm/private:pnpm_repository",
+        "//npm/private:yarn_lock_extension",
+        "//npm/private:yarn_lock_repository",
         "@bazel_lib//lib:repo_utils",
     ],
 )

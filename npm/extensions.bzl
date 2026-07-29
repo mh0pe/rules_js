@@ -506,7 +506,7 @@ Corepack, linking, lifecycle scripts, or writes to the source workspace.
                 ),
                 "yarn_version": attr.string(
                     default = "4.5.0",
-                    doc = "Exact official Yarn runtime version; independently pinned from packageManager.",
+                    doc = "Exact reviewed official Yarn runtime version (4.5.0 or 4.18.0); independently pinned from packageManager.",
                 ),
             },
         ),

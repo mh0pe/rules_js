@@ -116,15 +116,48 @@ const rejectPinnedYarnUnsupportedSettings = (parsed, configPath) => {
         Object.prototype.hasOwnProperty.call(parsed, 'pnpmStoreFolder')
     ) {
         throw new Error(
-            `pnpmStoreFolder is not supported by pinned Yarn 4.5.0; its pnpm linker ` +
-                `uses the fixed project-local node_modules/.store path: ${configPath}`
+            `pnpmStoreFolder is not supported by the reviewed pinned Yarn runtimes; ` +
+                `their pnpm linker uses the fixed project-local node_modules/.store path: ${configPath}`
         )
     }
 }
 
-// Mirrors the exact GitFetcher.supports predicate in pinned Yarn 4.5.0. Its
-// fetcher may run a package manager to prepare and pack the checked-out project,
-// so these locators must be rejected before makeFetcher().fetch is called.
+const classifySourceLockVersion = (rawVersion) => {
+    const version = Number(rawVersion)
+    if (version === -1) return { format: 'classic-v1', version: 1 }
+    if ([4, 6, 8, 9, 10].includes(version))
+        return { format: `berry-v${version}`, version }
+    throw new Error(
+        `Unsupported Yarn lock metadata version ${String(version)}; ` +
+            `supported inputs are Classic v1 and Berry v4, v6, v8, v9, and v10`
+    )
+}
+
+const SOURCE_EXPORTER_COMPATIBILITY = new Map([
+    ['classic-v1', ['4.5.0']],
+    ['berry-v4', ['4.5.0', '4.18.0']],
+    ['berry-v6', ['4.5.0', '4.18.0']],
+    ['berry-v8', ['4.5.0', '4.18.0']],
+    ['berry-v9', ['4.18.0']],
+    ['berry-v10', ['4.18.0']],
+])
+
+const assertSourceExporterCompatibility = (source, exporterYarnVersion) => {
+    const supported = SOURCE_EXPORTER_COMPATIBILITY.get(source.format)
+    if (!supported?.includes(exporterYarnVersion)) {
+        throw new Error(
+            `Yarn ${source.format} must be exported with reviewed Yarn runtime ` +
+                `${
+                    supported?.join(' or ') || '<none>'
+                }; got ${exporterYarnVersion}`
+        )
+    }
+}
+
+// Covers executable Git reference forms accepted by the reviewed pinned Yarn
+// runtimes. Their fetcher may run a package manager to prepare and pack the
+// checked-out project, so these locators must be rejected before
+// makeFetcher().fetch is called.
 const YARN_GIT_REFERENCE_PATTERNS = [
     /^ssh:/,
     /^git(?:\+[^:]+)?:/,
@@ -311,21 +344,65 @@ const rejectUnsafeYarnLocatorBeforeFetch = ({
     return null
 }
 
+const reachabilityState = (requiresDev, requiresOptional) => {
+    if (requiresDev) return requiresOptional ? 'dev_optional' : 'dev'
+    return requiresOptional ? 'optional' : 'prod'
+}
+
+const childReachabilityState = (state, optionalEdge) => {
+    if (
+        state !== 'prod' &&
+        state !== 'dev' &&
+        state !== 'optional' &&
+        state !== 'dev_optional'
+    ) {
+        throw new Error(`Unknown reachability state ${state}`)
+    }
+    return reachabilityState(
+        state === 'dev' || state === 'dev_optional',
+        optionalEdge || state === 'optional' || state === 'dev_optional'
+    )
+}
+
+const reachabilityMetadata = (states) => {
+    let hasState = false
+    let prodReachable = false
+    let devOnly = true
+    let optionalOnly = true
+    for (const state of states) {
+        childReachabilityState(state, false)
+        hasState = true
+        prodReachable ||= state === 'prod'
+        devOnly &&= state === 'dev' || state === 'dev_optional'
+        optionalOnly &&= state === 'optional' || state === 'dev_optional'
+    }
+    return {
+        dev_only: hasState && devOnly,
+        optional: hasState && optionalOnly,
+        prod_reachable: prodReachable,
+    }
+}
+
 // Runtime Yarn plugin injected through YARN_PLUGINS. The exact pinned yarn.js
 // process provides these modules, so the exporter and resolver cannot drift.
 module.exports = {
     __internal: {
+        childReachabilityState,
         classicHttpStatusError,
         classicHttpsProxyIsConfigured,
         classicRetryAfterMilliseconds,
         classicRetryDelay,
         assertClassicSelectorAcceptsLockedVersion,
         assertNoClassicSelectiveResolutions,
+        assertSourceExporterCompatibility,
+        classifySourceLockVersion,
         isAbsoluteYarnUserPath,
         isExecutableYarnGitReference,
         rejectExecutableYarnGitLocator,
         rejectPinnedYarnUnsupportedSettings,
         rejectUnsafeYarnLocatorBeforeFetch,
+        reachabilityMetadata,
+        reachabilityState,
         retryClassicOperation,
     },
     name: '@aspect-build/plugin-rules-js-lock-export',
@@ -364,7 +441,7 @@ module.exports = {
         const { connect: tlsConnect } = require('node:tls')
         const { gunzipSync } = require('node:zlib')
 
-        const GRAPH_SCHEMA_VERSION = 1
+        const GRAPH_SCHEMA_VERSION = 2
         const CLASSIC_MAX_ARCHIVE_BYTES = 256 * 1024 * 1024
         const CLASSIC_MAX_UNCOMPRESSED_BYTES = 512 * 1024 * 1024
         const CLASSIC_MAX_REDIRECTS = 5
@@ -1756,9 +1833,10 @@ module.exports = {
                             descriptor,
                             `workspace ${workspace.cwd} dependency`
                         ),
-                        isOptional(manifest.dependenciesMeta, descriptor)
-                            ? 'optional'
-                            : 'prod'
+                        reachabilityState(
+                            false,
+                            isOptional(manifest.dependenciesMeta, descriptor)
+                        )
                     )
                 }
                 for (const descriptor of manifest.devDependencies.values()) {
@@ -1778,7 +1856,7 @@ module.exports = {
                             descriptor,
                             `workspace ${workspace.cwd} devDependency`
                         ),
-                        'dev'
+                        reachabilityState(true, false)
                     )
                 }
             }
@@ -1840,9 +1918,9 @@ module.exports = {
                     }
                 }
                 for (const [, target] of record.dependencyTargets)
-                    enqueue(target, category)
+                    enqueue(target, childReachabilityState(category, false))
                 for (const [, target] of record.optionalDependencyTargets) {
-                    enqueue(target, category === 'dev' ? 'dev' : 'optional')
+                    enqueue(target, childReachabilityState(category, true))
                 }
             }
 
@@ -1973,6 +2051,7 @@ module.exports = {
 
             const packages = orderedRecords.map((record) => {
                 const categories = reached.get(record)
+                const reachability = reachabilityMetadata(categories)
                 const dependencyEntries = record.dependencyTargets.map(
                     ([descriptor, target]) => [
                         structUtils.stringifyIdent(descriptor),
@@ -1993,24 +2072,19 @@ module.exports = {
                         conditions: record.manifest.conditions,
                         dependencies: sortedObject(dependencyEntries),
                         dependency_meta: {},
-                        dev_only:
-                            categories.has('dev') &&
-                            !categories.has('prod') &&
-                            !categories.has('optional'),
+                        dev_only: reachability.dev_only,
                         friendly_version: record.identity.friendlyVersion,
                         has_bin: Object.keys(record.manifest.bins).length > 0,
                         link_type: 'HARD',
                         name: record.identity.name,
-                        optional:
-                            categories.has('optional') &&
-                            !categories.has('prod') &&
-                            !categories.has('dev'),
+                        optional: reachability.optional,
                         optional_dependencies: sortedObject(
                             optionalDependencyEntries
                         ),
                         peer_dependencies: record.manifest.peerDependencies,
                         peer_dependencies_meta:
                             record.manifest.peerDependenciesMeta,
+                        prod_reachable: reachability.prod_reachable,
                         requires_build: record.manifest.requiresBuild,
                         resolution: {
                             archive: record.archiveRelative,
@@ -2454,17 +2528,6 @@ module.exports = {
             return requestedName === identity.name
                 ? identity.version
                 : `npm:${identity.name}@${identity.version}`
-        }
-
-        const classifySourceFormat = (project) => {
-            const version = Number(project.lockfileLastVersion)
-            if (version === -1) return { format: 'classic-v1', version: 1 }
-            if (version === 4 || version === 6 || version === 8)
-                return { format: `berry-v${version}`, version }
-            throw new Error(
-                `Unsupported Yarn lock metadata version ${String(version)}; ` +
-                    `supported inputs are Classic v1 and Berry v4, v6, and v8`
-            )
         }
 
         const workspaceForLocator = (project, locator) => {
@@ -3215,12 +3278,13 @@ module.exports = {
                             workspace,
                             descriptor
                         ),
-                        isOptional(
-                            workspace.manifest.dependenciesMeta,
-                            descriptor
+                        reachabilityState(
+                            false,
+                            isOptional(
+                                workspace.manifest.dependenciesMeta,
+                                descriptor
+                            )
                         )
-                            ? 'optional'
-                            : 'prod'
                     )
                 }
                 for (const descriptor of workspace.manifest.devDependencies.values()) {
@@ -3230,7 +3294,7 @@ module.exports = {
                             workspace,
                             descriptor
                         ),
-                        'dev'
+                        reachabilityState(true, false)
                     )
                 }
             }
@@ -3258,13 +3322,10 @@ module.exports = {
                         `No stored Yarn package for locator hash ${locatorHash}`
                     )
                 for (const child of pkg.dependencies.values()) {
-                    const childCategory =
-                        category === 'dev'
-                            ? 'dev'
-                            : category === 'optional' ||
-                                isOptional(pkg.dependenciesMeta, child)
-                              ? 'optional'
-                              : 'prod'
+                    const childCategory = childReachabilityState(
+                        category,
+                        isOptional(pkg.dependenciesMeta, child)
+                    )
                     enqueue(child, childCategory)
                 }
             }
@@ -3583,7 +3644,13 @@ module.exports = {
                         `Yarn project root escapes the generated repository`
                     )
                 }
-                const source = classifySourceFormat(project)
+                const source = classifySourceLockVersion(
+                    project.lockfileLastVersion
+                )
+                assertSourceExporterCompatibility(
+                    source,
+                    this.exporterYarnVersion
+                )
                 if (source.format.startsWith('berry-'))
                     validateWorkspaceManifestsAgainstLock(project)
                 const declaredPackageManagers = validatePackageManager(project)
@@ -3811,6 +3878,7 @@ module.exports = {
                         isOptional(pkg.dependenciesMeta, descriptor)
                     const reachedAs =
                         reachability.get(locator.locatorHash) || new Set()
+                    const reachabilityInfo = reachabilityMetadata(reachedAs)
                     if (workspace) {
                         packages.push([
                             identity.key,
@@ -3826,18 +3894,12 @@ module.exports = {
                                 dependency_meta: dependencyMetadata(
                                     pkg.dependenciesMeta
                                 ),
-                                dev_only:
-                                    reachedAs.has('dev') &&
-                                    !reachedAs.has('prod') &&
-                                    !reachedAs.has('optional'),
+                                dev_only: reachabilityInfo.dev_only,
                                 friendly_version: identity.friendlyVersion,
                                 has_bin: pkg.bin.size > 0,
                                 link_type: pkg.linkType,
                                 name: identity.name,
-                                optional:
-                                    reachedAs.has('optional') &&
-                                    !reachedAs.has('prod') &&
-                                    !reachedAs.has('dev'),
+                                optional: reachabilityInfo.optional,
                                 optional_dependencies: dependencyMap(
                                     project,
                                     pkg.dependencies,
@@ -3857,6 +3919,7 @@ module.exports = {
                                 peer_dependencies_meta: peerDependencyMetadata(
                                     pkg.peerDependenciesMeta
                                 ),
+                                prod_reachable: reachabilityInfo.prod_reachable,
                                 requires_build: false,
                                 resolution: {
                                     directory:
@@ -3978,18 +4041,12 @@ module.exports = {
                             dependency_meta: dependencyMetadata(
                                 pkg.dependenciesMeta
                             ),
-                            dev_only:
-                                reachedAs.has('dev') &&
-                                !reachedAs.has('prod') &&
-                                !reachedAs.has('optional'),
+                            dev_only: reachabilityInfo.dev_only,
                             friendly_version: identity.friendlyVersion,
                             has_bin: pkg.bin.size > 0,
                             link_type: pkg.linkType,
                             name: identity.name,
-                            optional:
-                                reachedAs.has('optional') &&
-                                !reachedAs.has('prod') &&
-                                !reachedAs.has('dev'),
+                            optional: reachabilityInfo.optional,
                             optional_dependencies: dependencyMap(
                                 project,
                                 pkg.dependencies,
@@ -4007,6 +4064,7 @@ module.exports = {
                             peer_dependencies_meta: peerDependencyMetadata(
                                 pkg.peerDependenciesMeta
                             ),
+                            prod_reachable: reachabilityInfo.prod_reachable,
                             requires_build:
                                 buildEvidence.get(archiveLocator.locatorHash)
                                     ?.requires_build ?? null,

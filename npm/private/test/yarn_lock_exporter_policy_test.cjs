@@ -3,16 +3,73 @@ const { posix } = require('node:path')
 
 const {
     __internal: {
+        childReachabilityState,
         classicHttpStatusError,
         classicHttpsProxyIsConfigured,
         classicRetryAfterMilliseconds,
+        assertSourceExporterCompatibility,
+        classifySourceLockVersion,
         isAbsoluteYarnUserPath,
         isExecutableYarnGitReference,
         rejectExecutableYarnGitLocator,
         rejectUnsafeYarnLocatorBeforeFetch,
+        reachabilityMetadata,
+        reachabilityState,
         retryClassicOperation,
     },
 } = require('../yarn_lock_exporter.cjs')
+
+assert.deepEqual(classifySourceLockVersion(-1), {
+    format: 'classic-v1',
+    version: 1,
+})
+for (const version of [4, 6, 8, 9, 10]) {
+    assert.deepEqual(classifySourceLockVersion(version), {
+        format: `berry-v${version}`,
+        version,
+    })
+}
+for (const version of [0, 1, 2, 5, 7, 11, 12, Number.NaN]) {
+    assert.throws(
+        () => classifySourceLockVersion(version),
+        /Unsupported Yarn lock metadata version/
+    )
+}
+
+for (const [source, runtimes] of [
+    [{ format: 'classic-v1', version: 1 }, ['4.5.0']],
+    [{ format: 'berry-v4', version: 4 }, ['4.5.0', '4.18.0']],
+    [{ format: 'berry-v6', version: 6 }, ['4.5.0', '4.18.0']],
+    [{ format: 'berry-v8', version: 8 }, ['4.5.0', '4.18.0']],
+    [{ format: 'berry-v9', version: 9 }, ['4.18.0']],
+    [{ format: 'berry-v10', version: 10 }, ['4.18.0']],
+]) {
+    for (const runtime of runtimes) {
+        assert.doesNotThrow(() =>
+            assertSourceExporterCompatibility(source, runtime)
+        )
+    }
+}
+assert.throws(
+    () =>
+        assertSourceExporterCompatibility(
+            { format: 'classic-v1', version: 1 },
+            '4.18.0'
+        ),
+    /classic-v1.*reviewed Yarn runtime 4\.5\.0.*got 4\.18\.0/
+)
+for (const version of [9, 10]) {
+    assert.throws(
+        () =>
+            assertSourceExporterCompatibility(
+                { format: `berry-v${version}`, version },
+                '4.5.0'
+            ),
+        new RegExp(
+            `berry-v${version}.*reviewed Yarn runtime 4\\.18\\.0.*got 4\\.5\\.0`
+        )
+    )
+}
 
 for (const reference of [
     'ssh://git@github.com/example/project.git#commit=0123456789abcdef',
@@ -272,6 +329,27 @@ assert.equal(
 )
 
 assert.equal(classicRetryAfterMilliseconds('600'), 600_000)
+
+assert.equal(reachabilityState(false, false), 'prod')
+assert.equal(reachabilityState(true, false), 'dev')
+assert.equal(reachabilityState(false, true), 'optional')
+assert.equal(reachabilityState(true, true), 'dev_optional')
+assert.equal(childReachabilityState('dev', true), 'dev_optional')
+assert.deepEqual(reachabilityMetadata(new Set(['dev', 'optional'])), {
+    dev_only: false,
+    optional: false,
+    prod_reachable: false,
+})
+assert.deepEqual(reachabilityMetadata(new Set(['prod', 'dev_optional'])), {
+    dev_only: false,
+    optional: false,
+    prod_reachable: true,
+})
+assert.deepEqual(reachabilityMetadata(new Set()), {
+    dev_only: false,
+    optional: false,
+    prod_reachable: false,
+})
 
 void (async () => {
     let calls = 0

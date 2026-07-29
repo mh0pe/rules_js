@@ -2,8 +2,8 @@
 
 _DEFAULT_YARN_VERSION = "4.5.0"
 
-# Official release metadata at Yarn's @yarnpkg/cli/4.5.0 tag, peeled to
-# https://github.com/yarnpkg/berry/commit/68e10d099fb6bee03e4450bc516c0c04e24bcb96.
+# Official release metadata from exact @yarnpkg/cli tags, peeled to their
+# underlying Yarn Berry commits.
 _YARN_RELEASES = {
     "4.5.0": struct(
         bundle_sha256 = "cc00dce5de4f68d11450519a0f69eadf2a1cbe5cc0d8e740bfac817a31d76874",
@@ -17,6 +17,21 @@ _YARN_RELEASES = {
                 output = "LICENSE.plugin-patch",
                 sha256 = "4b1c4702fc655652e3794376a734e1505dee4b297582da2dc1dcc846796db122",
                 url = "https://raw.githubusercontent.com/yarnpkg/berry/68e10d099fb6bee03e4450bc516c0c04e24bcb96/packages/plugin-patch/LICENSE",
+            ),
+        ],
+    ),
+    "4.18.0": struct(
+        bundle_sha256 = "fb8b1d20be72a0b544a35bcec4c7ed0ff55a9b173c01f191b02ba164b2051db5",
+        licenses = [
+            struct(
+                output = "LICENSE.yarn.md",
+                sha256 = "238d933f5c226cc197bd1dae2ad0c468e157b4cba8ed844f81549ba6db777dc4",
+                url = "https://raw.githubusercontent.com/yarnpkg/berry/923f69827c77fe5cf4f6c28c0cab3c02a256abf0/LICENSE.md",
+            ),
+            struct(
+                output = "LICENSE.plugin-patch",
+                sha256 = "4b1c4702fc655652e3794376a734e1505dee4b297582da2dc1dcc846796db122",
+                url = "https://raw.githubusercontent.com/yarnpkg/berry/923f69827c77fe5cf4f6c28c0cab3c02a256abf0/packages/plugin-patch/LICENSE",
             ),
         ],
     ),

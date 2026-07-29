@@ -3,13 +3,23 @@
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load(":utils.bzl", "utils")
 
-_SCHEMA_VERSION = 1
-_SUPPORTED_EXPORTER_YARN_VERSIONS = ["4.5.0"]
+_SCHEMA_VERSION = 2
+_SUPPORTED_EXPORTER_YARN_VERSIONS = ["4.5.0", "4.18.0"]
 _SOURCE_LOCK_VERSIONS = {
     "berry-v4": 4,
     "berry-v6": 6,
     "berry-v8": 8,
+    "berry-v9": 9,
+    "berry-v10": 10,
     "classic-v1": 1,
+}
+_SOURCE_EXPORTER_COMPATIBILITY = {
+    "berry-v4": ["4.5.0", "4.18.0"],
+    "berry-v6": ["4.5.0", "4.18.0"],
+    "berry-v8": ["4.5.0", "4.18.0"],
+    "berry-v9": ["4.18.0"],
+    "berry-v10": ["4.18.0"],
+    "classic-v1": ["4.5.0"],
 }
 _CONDITION_ORDER = {
     "cpu": 1,
@@ -788,11 +798,20 @@ def _parse_yarn_graph_json(content, graph_label, no_dev = False, no_optional = F
                 source_format,
             ),
         )
-    _expect_enum(
+    exporter_yarn_version = _expect_enum(
         metadata.get("exporter_yarn_version"),
         _SUPPORTED_EXPORTER_YARN_VERSIONS,
         "metadata.exporter_yarn_version",
     )
+    compatible_exporters = _SOURCE_EXPORTER_COMPATIBILITY[source_format]
+    if exporter_yarn_version not in compatible_exporters:
+        return _error(
+            "metadata.exporter_yarn_version {} is not supported for source_format {}; expected {}".format(
+                exporter_yarn_version,
+                source_format,
+                " or ".join(compatible_exporters),
+            ),
+        )
     _validate_declared_package_managers(
         metadata.get("declared_package_managers"),
     )
@@ -825,7 +844,7 @@ def _parse_yarn_graph_json(content, graph_label, no_dev = False, no_optional = F
         "patched_dependencies",
     )
     if patched_dependencies:
-        return _error("patched_dependencies must be empty in schema v1")
+        return _error("patched_dependencies must be empty in schema v2")
 
     packages = {}
     directory_refs = {}
@@ -849,6 +868,7 @@ def _parse_yarn_graph_json(content, graph_label, no_dev = False, no_optional = F
                 "optional_dependencies",
                 "peer_dependencies",
                 "peer_dependencies_meta",
+                "prod_reachable",
                 "requires_build",
                 "resolution",
                 "version",
@@ -864,7 +884,21 @@ def _parse_yarn_graph_json(content, graph_label, no_dev = False, no_optional = F
             raw_package.get("optional"),
             "packages[{}].optional".format(package_key),
         )
-        if (no_dev and dev_only) or (no_optional and optional):
+        prod_reachable = _expect_bool(
+            raw_package.get("prod_reachable"),
+            "packages[{}].prod_reachable".format(package_key),
+        )
+        if prod_reachable and (dev_only or optional):
+            fail(
+                "Yarn graph parse error: packages[{}] with prod_reachable=true cannot be dev_only or optional".format(
+                    package_key,
+                ),
+            )
+        if (
+            (no_dev and dev_only) or
+            (no_optional and optional) or
+            (no_dev and no_optional and not prod_reachable)
+        ):
             continue
         name = _expect_string(raw_package.get("name"), "packages[{}].name".format(package_key))
         version = _expect_string(raw_package.get("version"), "packages[{}].version".format(package_key))
@@ -1145,6 +1179,7 @@ def _parse_yarn_graph_json(content, graph_label, no_dev = False, no_optional = F
             "optional": optional,
             "os": conditions.get("os", []),
             "optional_dependencies": {},
+            "prod_reachable": prod_reachable,
             "requires_build": requires_build,
             "resolution": normalized_resolution,
             "version": version,

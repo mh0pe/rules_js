@@ -33,12 +33,14 @@ yarn_graph_tests(name = "test_yarn_graph")
 
 js_test(
     name = "yarn_lock_exporter_policy_test",
+    size = "small",
     data = ["//npm/private:yarn_lock_exporter_module"],
     entry_point = "yarn_lock_exporter_policy_test.cjs",
 )
 
 js_test(
     name = "yarn_lock_classic_validation_test",
+    size = "small",
     data = ["//npm/private:yarn_lock_exporter_module"],
     entry_point = "yarn_lock_classic_validation_test.cjs",
 )

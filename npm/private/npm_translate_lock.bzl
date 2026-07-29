@@ -22,7 +22,7 @@ See [Configuring Bazel's Downloader](https://blog.aspect.build/configuring-bazel
 for more info about how it works and how to configure it.
 
 The [`npm_translate_lock`](#npm_translate_lock) module extension tag is the primary user-facing API.
-It consumes either a pnpm lockfile or a schema-v1 normalized Yarn graph. Both
+It consumes either a pnpm lockfile or a schema-v2 normalized Yarn graph. Both
 inputs are translated to rules_js semantics for dynamically laying out
 `node_modules` trees in bazel-out.
 
