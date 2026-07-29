@@ -15,13 +15,14 @@ yarn_lock.generate(
     name = "generated-yarn-graph",
     binary_data = ["//:binary_fixture.dat"],
     data = [
+        "//:.yarn/patches/semver-npm-7.6.3-57e82c14d5.patch",
         "//:.yarnrc.yml",
         "//:package.json",
         "//packages/consumer-seven:package.json",
         "//packages/consumer-six:package.json",
         "//packages/peer-reader:package.json",
     ],
-    expected_graph_sha256 = "10da213176dabe34c9f0f16c1f9d3e82e1dd059c5863cfab10a5d6cf18a9aa24",
+    expected_graph_sha256 = "129d23f372f07f21175fea9e53c210e880554aebc437d61880618f1e81d32099",
     quiet = False,
     yarn_lock = "//:yarn.lock",
 )

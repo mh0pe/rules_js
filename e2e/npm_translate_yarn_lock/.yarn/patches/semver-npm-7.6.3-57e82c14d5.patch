@@ -1,0 +1,10 @@
+diff --git a/index.js b/index.js
+index 86d42ac16a840bb83cdba9b94ec4ff2359e7af47..f6a5a78b0906976d637dadcdd340b2279f5f9a30 100644
+--- a/index.js
++++ b/index.js
+@@ -86,4 +86,5 @@ module.exports = {
+   RELEASE_TYPES: constants.RELEASE_TYPES,
+   compareIdentifiers: identifiers.compareIdentifiers,
+   rcompareIdentifiers: identifiers.rcompareIdentifiers,
++  RULES_JS_PATCH_SENTINEL: 'native-yarn-patch-applied',
+ }

@@ -10,7 +10,7 @@ __metadata:
   resolution: "@rules-js-yarn/consumer-seven@workspace:packages/consumer-seven"
   dependencies:
     "@rules-js-yarn/peer-reader": "workspace:*"
-    semver: "npm:7.6.3"
+    semver: "patch:semver@npm%3A7.6.3#~/.yarn/patches/semver-npm-7.6.3-57e82c14d5.patch"
   languageName: unknown
   linkType: soft
 
@@ -31,13 +31,20 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"is-number@npm:6.0.0":
+  version: 6.0.0
+  resolution: "is-number@npm:6.0.0"
+  checksum: 10c0/5da4c68401529675c575878d2760d66f18eaef4b014858577f6003daf66488d7fe4eae684b1e8574e3fa1bb447c6c6c56b8491d2b4b3239da2d32e5f6f218008
+  languageName: node
+  linkType: hard
+
 "rules-js-native-yarn-e2e@workspace:.":
   version: 0.0.0-use.local
   resolution: "rules-js-native-yarn-e2e@workspace:."
   dependencies:
     "@rules-js-yarn/consumer-seven": "workspace:*"
     "@rules-js-yarn/consumer-six": "workspace:*"
-    semver: "npm:7.6.3"
+    semver: "patch:semver@npm%3A7.6.3#~/.yarn/patches/semver-npm-7.6.3-57e82c14d5.patch"
   languageName: unknown
   linkType: soft
 
@@ -56,5 +63,14 @@ __metadata:
   bin:
     semver: bin/semver.js
   checksum: 10c0/88f33e148b210c153873cb08cfe1e281d518aaa9a666d4d148add6560db5cd3c582f3a08ccb91f38d5f379ead256da9931234ed122057f40bb5766e65e58adaf
+  languageName: node
+  linkType: hard
+
+"semver@patch:semver@npm%3A7.6.3#~/.yarn/patches/semver-npm-7.6.3-57e82c14d5.patch":
+  version: 7.6.3
+  resolution: "semver@patch:semver@npm%3A7.6.3#~/.yarn/patches/semver-npm-7.6.3-57e82c14d5.patch::version=7.6.3&hash=54d467"
+  bin:
+    semver: bin/semver.js
+  checksum: 10c0/511489d60fde910506d704f6eee8555247c98ee3a3f209af10e760ba6557bf885f20b4ad427e036de1d453cfcc3079c8aa6c0c200361f45910a768185d1ddba0
   languageName: node
   linkType: hard
