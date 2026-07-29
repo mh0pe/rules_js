@@ -14,6 +14,7 @@ load(":translate_lock_helpers_tests.bzl", "translate_lock_helpers_tests")
 load(":utils_tests.bzl", "utils_tests")
 load(":yarn_graph_tests.bzl", "yarn_graph_tests")
 load(":yarn_lock_extension_test.bzl", "yarn_lock_extension_tests")
+load(":yarn_lock_repository_test.bzl", "yarn_lock_repository_tests")
 
 npm_link_all_packages()
 
@@ -25,6 +26,8 @@ npmrc_tests(name = "test_npmrc")
 pnpm_tests(name = "test_pnpm")
 
 yarn_lock_extension_tests(name = "test_yarn_lock_extension")
+
+yarn_lock_repository_tests(name = "test_yarn_lock_repository")
 
 yarn_graph_tests(name = "test_yarn_graph")
 

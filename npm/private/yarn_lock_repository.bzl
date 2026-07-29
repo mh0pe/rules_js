@@ -65,6 +65,99 @@ def _label_path(label):
         fail("input label resolves outside its repository: {}".format(label))
     return path
 
+def _yaml_root_indent(source_configuration):
+    root_indent = None
+    for line in source_configuration.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or stripped in ["---", "..."] or stripped.startswith("%"):
+            continue
+
+        indent = 0
+        for index in range(len(line)):
+            character = line[index]
+            if character == " ":
+                indent += 1
+            elif character == "\t":
+                return None, "tabs are not supported in YAML indentation"
+            else:
+                break
+        if root_indent == None or indent < root_indent:
+            root_indent = indent
+
+    return root_indent if root_indent != None else 0, None
+
+def _yaml_root_key(line, root_indent):
+    if len(line) < root_indent or line[:root_indent] != " " * root_indent:
+        return None, None
+
+    body = line[root_indent:]
+    stripped = body.strip()
+    if not stripped or stripped.startswith("#") or stripped in ["---", "..."] or stripped.startswith("%"):
+        return None, None
+    if body.startswith(" "):
+        return None, None
+    if stripped.startswith("---") or stripped.startswith("..."):
+        if stripped in ["---", "..."] or stripped.startswith("--- #") or stripped.startswith("... #"):
+            return None, None
+        return None, "document-prefixed root content cannot be merged safely"
+    if stripped.startswith("{"):
+        return None, "flow-style root mappings cannot be merged safely"
+    if stripped.startswith("?"):
+        return None, "complex root mapping keys cannot be merged safely"
+    if stripped[0] in ["!", "&", "*"]:
+        return None, "tagged, anchored, or aliased root mapping keys cannot be merged safely"
+
+    if body[0] in ["'", "\""]:
+        quote = body[0]
+        closing_quote = None
+        escaped = False
+        skip_single_quote = False
+        for index in range(1, len(body)):
+            character = body[index]
+            if skip_single_quote:
+                skip_single_quote = False
+                continue
+            if quote == "\"" and character == "\\":
+                escaped = True
+                continue
+            if character != quote:
+                continue
+            if quote == "'" and index + 1 < len(body) and body[index + 1] == "'":
+                skip_single_quote = True
+                continue
+            closing_quote = index
+            break
+
+        if closing_quote == None:
+            return None, "unterminated quoted root mapping key"
+        if escaped:
+            return None, "escaped quoted root mapping keys cannot be merged safely"
+        if not body[closing_quote + 1:].lstrip().startswith(":"):
+            return None, None
+        return body[1:closing_quote], None
+
+    separator = body.find(":")
+    comment = body.find("#")
+    if separator == -1 or (comment != -1 and comment < separator):
+        return None, None
+    return body[:separator].strip(), None
+
+def _yaml_root_keys(source_configuration):
+    root_indent, error = _yaml_root_indent(source_configuration)
+    if error:
+        return {}, error
+
+    keys = {}
+    for line in source_configuration.splitlines():
+        key, error = _yaml_root_key(line, root_indent)
+        if error:
+            return {}, error
+        if key == "<<":
+            return {}, "YAML root merge keys cannot be merged safely"
+        if key:
+            keys[key] = True
+    return keys, None
+
 def _isolated_architecture_configuration(rctx, source_configuration):
     values = {
         "cpu": rctx.attr.supported_cpu,
@@ -73,7 +166,14 @@ def _isolated_architecture_configuration(rctx, source_configuration):
     }
     if not any(values.values()):
         return source_configuration
-    if "supportedArchitectures:" in source_configuration:
+
+    source_keys, source_error = _yaml_root_keys(source_configuration)
+    if source_error:
+        fail(
+            "supported_os/supported_cpu/supported_libc cannot safely extend the " +
+            "source .yarnrc.yml: {}".format(source_error),
+        )
+    if "supportedArchitectures" in source_keys:
         fail(
             "supported_os/supported_cpu/supported_libc cannot be combined with " +
             "supportedArchitectures in the source .yarnrc.yml",
@@ -584,4 +684,9 @@ The generated repository exports yarn_graph.json and the checksum-verified Yarn 
 for every reachable third-party locator. All project inputs must be declared through data
 or binary_data.
 """,
+)
+
+# Exported for focused unit testing of the fail-closed YAML merge boundary.
+yarn_lock_repository_testonly = struct(
+    yaml_root_keys = _yaml_root_keys,
 )
