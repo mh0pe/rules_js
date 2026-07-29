@@ -1,0 +1,14 @@
+{
+  "name": "rules-js-native-yarn-berry-reachability-e2e",
+  "private": true,
+  "packageManager": "yarn@4.18.0",
+  "dependencies": {
+    "debug": "4.3.4"
+  },
+  "devDependencies": {
+    "chokidar": "3.5.3"
+  },
+  "optionalDependencies": {
+    "fill-range": "7.1.1"
+  }
+}

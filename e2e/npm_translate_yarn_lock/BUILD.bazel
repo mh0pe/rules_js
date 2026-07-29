@@ -19,11 +19,15 @@ build_test(
         "@generated-yarn-classic-graph//classic:archives",
         "@generated-yarn-classic-graph//classic:licenses",
         "@generated-yarn-classic-graph//classic:yarn_graph.json",
+        "@generated-yarn-v9-graph//berry_v9:archives",
+        "@generated-yarn-v9-graph//berry_v9:licenses",
+        "@generated-yarn-v9-graph//berry_v9:yarn_graph.json",
     ],
 )
 
 js_test(
     name = "runtime_test",
+    size = "small",
     data = [
         ":binary_fixture.dat",
         ":node_modules/semver",
@@ -31,12 +35,80 @@ js_test(
     entry_point = "runtime_test.js",
 )
 
+js_test(
+    name = "yarn_graph_contract_test",
+    size = "small",
+    args = [
+        "pnpStrict=$(rootpath @generated-yarn-pnp-strict-graph//linker_modes/pnp_strict:yarn_graph.json)",
+        "pnpLoose=$(rootpath @generated-yarn-pnp-loose-graph//linker_modes/pnp_loose:yarn_graph.json)",
+        "pnpFallbackNone=$(rootpath @generated-yarn-pnp-fallback-none-graph//linker_modes/pnp_fallback_none:yarn_graph.json)",
+        "pnpFallbackAll=$(rootpath @generated-yarn-pnp-fallback-all-graph//linker_modes/pnp_fallback_all:yarn_graph.json)",
+        "nodeModules=$(rootpath @generated-yarn-node-modules-graph//linker_modes/node_modules_linker:yarn_graph.json)",
+        "pnpm=$(rootpath @generated-yarn-pnpm-graph//linker_modes/pnpm:yarn_graph.json)",
+        "classicGraph=$(rootpath @generated-yarn-classic-graph//classic:yarn_graph.json)",
+        "berryGraph=$(rootpath @generated-yarn-reachability-berry-graph//reachability/berry:yarn_graph.json)",
+        "classicall=$(rootpath @npm_classic//:defs.bzl)",
+        "classicnoDev=$(rootpath @npm_classic_no_dev//:defs.bzl)",
+        "classicnoOptional=$(rootpath @npm_classic_no_optional//:defs.bzl)",
+        "classicprodOnly=$(rootpath @npm_classic_prod_only//:defs.bzl)",
+        "berryall=$(rootpath @npm_reachability_berry//:defs.bzl)",
+        "berrynoDev=$(rootpath @npm_reachability_berry_no_dev//:defs.bzl)",
+        "berrynoOptional=$(rootpath @npm_reachability_berry_no_optional//:defs.bzl)",
+        "berryprodOnly=$(rootpath @npm_reachability_berry_prod_only//:defs.bzl)",
+    ],
+    data = [
+        "@generated-yarn-classic-graph//classic:yarn_graph.json",
+        "@generated-yarn-node-modules-graph//linker_modes/node_modules_linker:yarn_graph.json",
+        "@generated-yarn-pnp-fallback-all-graph//linker_modes/pnp_fallback_all:yarn_graph.json",
+        "@generated-yarn-pnp-fallback-none-graph//linker_modes/pnp_fallback_none:yarn_graph.json",
+        "@generated-yarn-pnp-loose-graph//linker_modes/pnp_loose:yarn_graph.json",
+        "@generated-yarn-pnp-strict-graph//linker_modes/pnp_strict:yarn_graph.json",
+        "@generated-yarn-pnpm-graph//linker_modes/pnpm:yarn_graph.json",
+        "@generated-yarn-reachability-berry-graph//reachability/berry:yarn_graph.json",
+        "@npm_classic//:defs.bzl",
+        "@npm_classic_no_dev//:defs.bzl",
+        "@npm_classic_no_optional//:defs.bzl",
+        "@npm_classic_prod_only//:defs.bzl",
+        "@npm_reachability_berry//:defs.bzl",
+        "@npm_reachability_berry_no_dev//:defs.bzl",
+        "@npm_reachability_berry_no_optional//:defs.bzl",
+        "@npm_reachability_berry_prod_only//:defs.bzl",
+    ],
+    entry_point = "yarn_graph_contract_test.js",
+    no_copy_to_bin = [
+        "@generated-yarn-classic-graph//classic:yarn_graph.json",
+        "@generated-yarn-node-modules-graph//linker_modes/node_modules_linker:yarn_graph.json",
+        "@generated-yarn-pnp-fallback-all-graph//linker_modes/pnp_fallback_all:yarn_graph.json",
+        "@generated-yarn-pnp-fallback-none-graph//linker_modes/pnp_fallback_none:yarn_graph.json",
+        "@generated-yarn-pnp-loose-graph//linker_modes/pnp_loose:yarn_graph.json",
+        "@generated-yarn-pnp-strict-graph//linker_modes/pnp_strict:yarn_graph.json",
+        "@generated-yarn-pnpm-graph//linker_modes/pnpm:yarn_graph.json",
+        "@generated-yarn-reachability-berry-graph//reachability/berry:yarn_graph.json",
+        "@npm_classic//:defs.bzl",
+        "@npm_classic_no_dev//:defs.bzl",
+        "@npm_classic_no_optional//:defs.bzl",
+        "@npm_classic_prod_only//:defs.bzl",
+        "@npm_reachability_berry//:defs.bzl",
+        "@npm_reachability_berry_no_dev//:defs.bzl",
+        "@npm_reachability_berry_no_optional//:defs.bzl",
+        "@npm_reachability_berry_prod_only//:defs.bzl",
+    ],
+)
+
 output_hygiene_test(
     name = "output_hygiene_test",
+    size = "small",
     target = "@generated-yarn-graph//:unexpected_files",
 )
 
 output_hygiene_test(
     name = "classic_output_hygiene_test",
+    size = "small",
     target = "@generated-yarn-classic-graph//classic:unexpected_files",
+)
+
+output_hygiene_test(
+    name = "v9_output_hygiene_test",
+    size = "small",
+    target = "@generated-yarn-v9-graph//berry_v9:unexpected_files",
 )

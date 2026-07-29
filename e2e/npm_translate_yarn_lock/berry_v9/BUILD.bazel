@@ -1,0 +1,28 @@
+load("@aspect_rules_js//js:defs.bzl", "js_test")
+load("@npm_v9//:defs.bzl", "npm_link_all_packages")
+
+exports_files([
+    ".yarnrc.yml",
+    "package.json",
+    "yarn.lock",
+])
+
+npm_link_all_packages(name = "node_modules")
+
+js_test(
+    name = "runtime_test",
+    size = "small",
+    args = [
+        "$(rootpath @generated-yarn-v9-graph//berry_v9:yarn_graph.json)",
+        "$(rootpath :package.json)",
+    ],
+    data = [
+        ":node_modules/is-number",
+        ":package.json",
+        "@generated-yarn-v9-graph//berry_v9:yarn_graph.json",
+    ],
+    entry_point = "runtime_test.js",
+    no_copy_to_bin = [
+        "@generated-yarn-v9-graph//berry_v9:yarn_graph.json",
+    ],
+)

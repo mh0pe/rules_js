@@ -4,7 +4,7 @@ local_path_override(
     path = "../..",
 )
 
-bazel_dep(name = "bazel_skylib", version = "1.5.0", dev_dependency = True)
+bazel_dep(name = "bazel_skylib", version = "1.8.2", dev_dependency = True)
 
 yarn_lock = use_extension(
     "@aspect_rules_js//npm:extensions.bzl",
@@ -22,12 +22,13 @@ yarn_lock.generate(
         "//packages/consumer-six:package.json",
         "//packages/peer-reader:package.json",
     ],
-    expected_graph_sha256 = "129d23f372f07f21175fea9e53c210e880554aebc437d61880618f1e81d32099",
+    expected_graph_sha256 = "b5e3e3d8320023dae65151104209aff33405a44543ec4d9532ebc8427160276b",
     quiet = False,
     supported_cpu = ["current"],
     supported_libc = ["current"],
     supported_os = ["current"],
     yarn_lock = "//:yarn.lock",
+    yarn_version = "4.18.0",
 )
 yarn_lock.generate(
     name = "generated-yarn-classic-graph",
@@ -36,14 +37,131 @@ yarn_lock.generate(
         "//classic:.yarnrc.yml",
         "//classic:package.json",
     ],
-    expected_graph_sha256 = "d7f8c2a5f324fc7a1a3199c76246bd91f57afd1a6a9114233f2afee4b8fe039f",
+    expected_graph_sha256 = "ad11c9248d7394e9342917fafca978d0b7c2b3657b8c3a30c9d04d7b1b27063a",
     quiet = False,
     yarn_lock = "//classic:yarn.lock",
+)
+yarn_lock.generate(
+    name = "generated-yarn-v9-graph",
+    data = [
+        "//berry_v9:.yarnrc.yml",
+        "//berry_v9:package.json",
+    ],
+    expected_graph_sha256 = "4986e6cf5e2dffc7f3321e164e8b5ea5c33627c2fa1c5aeeb1d212b97eceb32b",
+    quiet = False,
+    yarn_lock = "//berry_v9:yarn.lock",
+    yarn_version = "4.18.0",
+)
+yarn_lock.generate(
+    name = "generated-yarn-reachability-berry-graph",
+    data = [
+        "//reachability/berry:.yarnrc.yml",
+        "//reachability/berry:package.json",
+    ],
+    expected_graph_sha256 = "26d4ba6c758f05e36a40f6e3159d972e979f8a67b11ca27321c819bd6b607d19",
+    quiet = False,
+    supported_cpu = ["current"],
+    supported_libc = ["current"],
+    supported_os = ["current"],
+    yarn_lock = "//reachability/berry:yarn.lock",
+    yarn_version = "4.18.0",
+)
+yarn_lock.generate(
+    name = "generated-yarn-pnp-loose-graph",
+    data = [
+        "//linker_modes/pnp_loose:.yarnrc.yml",
+        "//linker_modes/pnp_loose:package.json",
+    ],
+    expected_graph_sha256 = "5f63adca2eeb65de31f56fea8990d7e65a0a8f85b8141db9d86c526a29a79fbe",
+    quiet = False,
+    supported_cpu = ["current"],
+    supported_libc = ["current"],
+    supported_os = ["current"],
+    yarn_lock = "//linker_modes/pnp_loose:yarn.lock",
+    yarn_version = "4.18.0",
+)
+yarn_lock.generate(
+    name = "generated-yarn-pnp-strict-graph",
+    data = [
+        "//linker_modes/pnp_strict:.yarnrc.yml",
+        "//linker_modes/pnp_strict:package.json",
+    ],
+    expected_graph_sha256 = "86977b7b8c7ba4db57dfaa5b0138c0a9aed733d8d2a4efa611fa48365b871aee",
+    quiet = False,
+    supported_cpu = ["current"],
+    supported_libc = ["current"],
+    supported_os = ["current"],
+    yarn_lock = "//linker_modes/pnp_strict:yarn.lock",
+    yarn_version = "4.18.0",
+)
+yarn_lock.generate(
+    name = "generated-yarn-pnp-fallback-none-graph",
+    data = [
+        "//linker_modes/pnp_fallback_none:.yarnrc.yml",
+        "//linker_modes/pnp_fallback_none:package.json",
+    ],
+    expected_graph_sha256 = "2576246b16b241e2ba4f2d2ea8a3e60b0732a46d31295a244c53b45f230a61c7",
+    quiet = False,
+    supported_cpu = ["current"],
+    supported_libc = ["current"],
+    supported_os = ["current"],
+    yarn_lock = "//linker_modes/pnp_fallback_none:yarn.lock",
+    yarn_version = "4.18.0",
+)
+yarn_lock.generate(
+    name = "generated-yarn-pnp-fallback-all-graph",
+    data = [
+        "//linker_modes/pnp_fallback_all:.yarnrc.yml",
+        "//linker_modes/pnp_fallback_all:package.json",
+    ],
+    expected_graph_sha256 = "1039ecff236eb5c7c50576c5d14cb51a39ed2a781d47060f23787272355e21d7",
+    quiet = False,
+    supported_cpu = ["current"],
+    supported_libc = ["current"],
+    supported_os = ["current"],
+    yarn_lock = "//linker_modes/pnp_fallback_all:yarn.lock",
+    yarn_version = "4.18.0",
+)
+yarn_lock.generate(
+    name = "generated-yarn-node-modules-graph",
+    data = [
+        "//linker_modes/node_modules_linker:.yarnrc.yml",
+        "//linker_modes/node_modules_linker:package.json",
+    ],
+    expected_graph_sha256 = "a3e208c382e83c96d97db01790b551a7b6a7f8384ec83fb821a0403b95989b18",
+    quiet = False,
+    supported_cpu = ["current"],
+    supported_libc = ["current"],
+    supported_os = ["current"],
+    yarn_lock = "//linker_modes/node_modules_linker:yarn.lock",
+    yarn_version = "4.18.0",
+)
+yarn_lock.generate(
+    name = "generated-yarn-pnpm-graph",
+    data = [
+        "//linker_modes/pnpm:.yarnrc.yml",
+        "//linker_modes/pnpm:package.json",
+    ],
+    expected_graph_sha256 = "64af9de8004f712e227f35daca8745b9c4ef7bc034623ca4b337ced98ab4d996",
+    quiet = False,
+    supported_cpu = ["current"],
+    supported_libc = ["current"],
+    supported_os = ["current"],
+    yarn_lock = "//linker_modes/pnpm:yarn.lock",
+    yarn_version = "4.18.0",
 )
 use_repo(
     yarn_lock,
     "generated-yarn-classic-graph",
     "generated-yarn-graph",
+    "generated-yarn-node-modules-graph",
+    "generated-yarn-pnp-fallback-all-graph",
+    "generated-yarn-pnp-fallback-none-graph",
+    "generated-yarn-pnp-loose-graph",
+    "generated-yarn-pnp-strict-graph",
+    "generated-yarn-pnpm-graph",
+    "generated-yarn-reachability-berry-graph",
+    "generated-yarn-v9-graph",
 )
 
 npm = use_extension(
@@ -63,4 +181,72 @@ npm.npm_translate_lock(
     verify_node_modules_ignored = "//:.bazelignore",
     yarn_graph = "@generated-yarn-classic-graph//classic:yarn_graph.json",
 )
-use_repo(npm, "npm", "npm_classic")
+npm.npm_translate_lock(
+    name = "npm_classic_no_dev",
+    no_dev = True,
+    quiet = False,
+    verify_node_modules_ignored = "//:.bazelignore",
+    yarn_graph = "@generated-yarn-classic-graph//classic:yarn_graph.json",
+)
+npm.npm_translate_lock(
+    name = "npm_classic_no_optional",
+    no_optional = True,
+    quiet = False,
+    verify_node_modules_ignored = "//:.bazelignore",
+    yarn_graph = "@generated-yarn-classic-graph//classic:yarn_graph.json",
+)
+npm.npm_translate_lock(
+    name = "npm_classic_prod_only",
+    no_dev = True,
+    no_optional = True,
+    quiet = False,
+    verify_node_modules_ignored = "//:.bazelignore",
+    yarn_graph = "@generated-yarn-classic-graph//classic:yarn_graph.json",
+)
+npm.npm_translate_lock(
+    name = "npm_reachability_berry",
+    quiet = False,
+    verify_node_modules_ignored = "//:.bazelignore",
+    yarn_graph = "@generated-yarn-reachability-berry-graph//reachability/berry:yarn_graph.json",
+)
+npm.npm_translate_lock(
+    name = "npm_reachability_berry_no_dev",
+    no_dev = True,
+    quiet = False,
+    verify_node_modules_ignored = "//:.bazelignore",
+    yarn_graph = "@generated-yarn-reachability-berry-graph//reachability/berry:yarn_graph.json",
+)
+npm.npm_translate_lock(
+    name = "npm_reachability_berry_no_optional",
+    no_optional = True,
+    quiet = False,
+    verify_node_modules_ignored = "//:.bazelignore",
+    yarn_graph = "@generated-yarn-reachability-berry-graph//reachability/berry:yarn_graph.json",
+)
+npm.npm_translate_lock(
+    name = "npm_reachability_berry_prod_only",
+    no_dev = True,
+    no_optional = True,
+    quiet = False,
+    verify_node_modules_ignored = "//:.bazelignore",
+    yarn_graph = "@generated-yarn-reachability-berry-graph//reachability/berry:yarn_graph.json",
+)
+npm.npm_translate_lock(
+    name = "npm_v9",
+    quiet = False,
+    verify_node_modules_ignored = "//:.bazelignore",
+    yarn_graph = "@generated-yarn-v9-graph//berry_v9:yarn_graph.json",
+)
+use_repo(
+    npm,
+    "npm",
+    "npm_classic",
+    "npm_classic_no_dev",
+    "npm_classic_no_optional",
+    "npm_classic_prod_only",
+    "npm_reachability_berry",
+    "npm_reachability_berry_no_dev",
+    "npm_reachability_berry_no_optional",
+    "npm_reachability_berry_prod_only",
+    "npm_v9",
+)

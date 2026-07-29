@@ -16,6 +16,7 @@ npm_package(
 
 js_test(
     name = "peer_context_test",
+    size = "small",
     data = [":node_modules/@rules-js-yarn/peer-reader"],
     entry_point = "runtime_test.js",
 )

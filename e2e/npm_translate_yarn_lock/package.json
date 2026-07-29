@@ -1,13 +1,13 @@
 {
-  "name": "rules-js-native-yarn-e2e",
-  "private": true,
-  "packageManager": "yarn@4.5.0",
-  "workspaces": [
-    "packages/*"
-  ],
-  "dependencies": {
-    "@rules-js-yarn/consumer-seven": "workspace:*",
-    "@rules-js-yarn/consumer-six": "workspace:*",
-    "semver": "patch:semver@npm%3A7.6.3#~/.yarn/patches/semver-npm-7.6.3-57e82c14d5.patch"
-  }
+    "name": "rules-js-native-yarn-e2e",
+    "private": true,
+    "packageManager": "yarn@4.18.0",
+    "workspaces": [
+        "packages/*"
+    ],
+    "dependencies": {
+        "@rules-js-yarn/consumer-seven": "workspace:*",
+        "@rules-js-yarn/consumer-six": "workspace:*",
+        "semver": "patch:semver@npm%3A7.6.3#~/.yarn/patches/semver-npm-7.6.3-57e82c14d5.patch"
+    }
 }

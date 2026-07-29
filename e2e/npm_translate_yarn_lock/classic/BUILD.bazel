@@ -25,6 +25,7 @@ build_test(
 
 js_test(
     name = "runtime_test",
+    size = "small",
     data = [
         ":node_modules/debug",
         ":node_modules/is-odd",
