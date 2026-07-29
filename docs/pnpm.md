@@ -75,6 +75,21 @@ npm.npm_translate_lock(
 )
 ```
 
+### libc-specific packages
+
+Packages whose lockfile metadata declares `libc` are selected using the
+`@aspect_rules_js//platforms/libc:libc` constraint setting. An explicit platform
+selects only the matching package branch:
+
+-   `@aspect_rules_js//platforms/libc:glibc` selects glibc packages.
+-   `@aspect_rules_js//platforms/libc:musl` selects musl packages.
+
+For compatibility, a platform that omits the libc constraint uses the setting's
+`unconstrained` default. Every libc-specific dependency also matches that
+default, so legacy platforms conservatively include all compatible libc
+variants. Add an explicit libc constraint to production platforms when you want
+the smaller, exact ABI-specific dependency set.
+
 ### Ignoring node_modules
 
 Bazel must be configured to ignore `node_modules` directories created by pnpm.

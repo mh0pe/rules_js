@@ -1,5 +1,6 @@
 """Test for pnpm extension version resolution."""
 
+load("@bazel_skylib//lib:partial.bzl", "partial")
 load("@bazel_skylib//lib:unittest.bzl", "asserts", "unittest")
 load("//npm/private:pnpm.bzl", "pnpm")
 load("//npm/private:pnpm_extension.bzl", "DEFAULT_PNPM_REPO_NAME", "resolve_pnpm_repositories")
@@ -322,6 +323,50 @@ def _os_cpu_constraints(ctx):
     )
     return unittest.end(env)
 
+def _libc_constraints(ctx):
+    env = unittest.begin(ctx)
+    asserts.equals(
+        env,
+        [
+            "@aspect_rules_js//platforms/pnpm:glibc",
+            "@aspect_rules_js//platforms/pnpm:unconstrained",
+        ],
+        pnpm.to_bazel_libc_constraints(["glibc"]),
+    )
+    asserts.equals(
+        env,
+        [
+            "@aspect_rules_js//platforms/pnpm:musl",
+            "@aspect_rules_js//platforms/pnpm:unconstrained",
+        ],
+        pnpm.to_bazel_libc_constraints(["!glibc"]),
+    )
+    asserts.equals(
+        env,
+        [
+            "@aspect_rules_js//platforms/pnpm:linux_glibc",
+            "@aspect_rules_js//platforms/pnpm:linux_unconstrained",
+        ],
+        pnpm.to_bazel_os_libc_constraints(["linux"], ["glibc"]),
+    )
+    asserts.equals(
+        env,
+        [
+            "@aspect_rules_js//platforms/pnpm:x64_musl",
+            "@aspect_rules_js//platforms/pnpm:x64_unconstrained",
+        ],
+        pnpm.to_bazel_cpu_libc_constraints(["x64"], ["musl"]),
+    )
+    asserts.equals(
+        env,
+        [
+            "@aspect_rules_js//platforms/pnpm:linux_x64_glibc",
+            "@aspect_rules_js//platforms/pnpm:linux_x64_unconstrained",
+        ],
+        pnpm.to_bazel_os_cpu_libc_constraints(["linux"], ["x64"], ["glibc"]),
+    )
+    return unittest.end(env)
+
 basic_test = unittest.make(_basic)
 override_test = unittest.make(_override)
 dep_version_with_default_registration_test = unittest.make(_dep_version_with_default_registration)
@@ -341,27 +386,29 @@ default_version_test = unittest.make(_default_version)
 cpu_constraints_test = unittest.make(_cpu_constraints)
 os_constraints_test = unittest.make(_os_constraints)
 os_cpu_constraints_test = unittest.make(_os_cpu_constraints)
+libc_constraints_test = unittest.make(_libc_constraints)
 
 def pnpm_tests(name):
     unittest.suite(
         name,
-        basic_test,
-        override_test,
-        dep_version_with_default_registration_test,
-        dep_versions_mvs_test,
-        root_default_dep_version_test,
-        root_explicit_default_beats_dep_test,
-        root_lower_than_default_test,
-        latest_test,
-        custom_name_test,
-        include_npm_test,
-        include_npm_other_version_wins_test,
-        integrity_conflict_test,
-        from_package_json_simple_test,
-        from_package_json_with_hash_test,
-        patch_args_empty_test,
-        default_version_test,
-        cpu_constraints_test,
-        os_constraints_test,
-        os_cpu_constraints_test,
+        partial.make(basic_test, size = "small"),
+        partial.make(override_test, size = "small"),
+        partial.make(dep_version_with_default_registration_test, size = "small"),
+        partial.make(dep_versions_mvs_test, size = "small"),
+        partial.make(root_default_dep_version_test, size = "small"),
+        partial.make(root_explicit_default_beats_dep_test, size = "small"),
+        partial.make(root_lower_than_default_test, size = "small"),
+        partial.make(latest_test, size = "small"),
+        partial.make(custom_name_test, size = "small"),
+        partial.make(include_npm_test, size = "small"),
+        partial.make(include_npm_other_version_wins_test, size = "small"),
+        partial.make(integrity_conflict_test, size = "small"),
+        partial.make(from_package_json_simple_test, size = "small"),
+        partial.make(from_package_json_with_hash_test, size = "small"),
+        partial.make(patch_args_empty_test, size = "small"),
+        partial.make(default_version_test, size = "small"),
+        partial.make(cpu_constraints_test, size = "small"),
+        partial.make(os_constraints_test, size = "small"),
+        partial.make(os_cpu_constraints_test, size = "small"),
+        partial.make(libc_constraints_test, size = "small"),
     )

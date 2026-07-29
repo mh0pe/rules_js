@@ -1,7 +1,7 @@
 "Private pnpm related platform info."
 
 # NOTE:
-#  - an entry existing in the PNPM_{ARCHS,PLATFORMS} means it is known to rules_js
+#  - an entry existing in the PNPM_{ARCHS,LIBCS,PLATFORMS} means it is known to rules_js
 #  - an entry mapping to None means it is unsupported within rules_js/bazel
 
 # Node/PNPM architectures and correspending @platforms labels
@@ -33,6 +33,17 @@ PNPM_ARCH_ALIASES = {
     "x32": "ia32",
     "x86": "ia32",
 }
+
+# Node/PNPM libc implementations and corresponding rules_js labels.
+PNPM_LIBCS = {
+    "glibc": "@aspect_rules_js//platforms/libc:glibc",
+    "musl": "@aspect_rules_js//platforms/libc:musl",
+}
+
+# Platforms that do not declare a libc use this default constraint value.
+# It is a Bazel compatibility state, not a valid pnpm package libc value.
+PNPM_LIBC_DEFAULT = "unconstrained"
+PNPM_LIBC_DEFAULT_CONSTRAINT = "@aspect_rules_js//platforms/libc:unconstrained"
 
 # Node/PNPM platforms and correspending @platforms labels
 # See https://nodejs.org/api/process.html#processplatform

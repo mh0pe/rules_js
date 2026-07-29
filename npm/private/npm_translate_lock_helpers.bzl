@@ -522,7 +522,7 @@ ERROR: can not apply both `pnpm.patchedDependencies` and `npm_translate_lock(pat
         else:
             npm_auth_bearer, npm_auth_basic, npm_auth_username, npm_auth_password = _select_npm_auth(url, npm_auth)
 
-        deps_oss, deps_cpus = _collect_dep_constraints(packages, package_info)
+        deps_oss, deps_cpus, deps_libcs = _collect_dep_constraints(packages, package_info)
 
         result_pkg = struct(
             archive = archive,
@@ -531,6 +531,7 @@ ERROR: can not apply both `pnpm.patchedDependencies` and `npm_translate_lock(pat
             deps = package_info["dependencies"] | package_info["optional_dependencies"],
             deps_oss = deps_oss,
             deps_cpus = deps_cpus,
+            deps_libcs = deps_libcs,
             integrity = integrity,
             link_packages = link_packages,
             repo_name = repo_name,
@@ -592,10 +593,11 @@ Either remove this patch file if it is no longer needed or change its key to mat
 def _collect_dep_constraints(packages, package_info):
     # Quick-exit for packages with no optional dependencies
     if not package_info["optional_dependencies"] and not package_info.get("transitive_optional_closure", None):
-        return None, None
+        return None, None, None
 
     constraints_os = {}
     constraints_cpu = {}
+    constraints_libc = {}
 
     optional_keys = package_info["optional_dependencies"].values() + package_info.get("transitive_optional_closure", {}).keys()
     for dep_key in optional_keys:
@@ -607,8 +609,10 @@ def _collect_dep_constraints(packages, package_info):
             constraints_os[dep_key] = dep["os"]
         if dep["cpu"]:
             constraints_cpu[dep_key] = dep["cpu"]
+        if dep.get("libc", None):
+            constraints_libc[dep_key] = dep["libc"]
 
-    return constraints_os, constraints_cpu
+    return constraints_os, constraints_cpu, constraints_libc
 
 ################################################################################
 def _link_package(root_package, import_path, rel_path = "."):

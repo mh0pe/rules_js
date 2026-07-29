@@ -15,8 +15,8 @@ js_binary(
     target_compatible_with = SKIP_ON_WINDOWS,
 )
 
-# Verify that the arm64 binding is selected when targeting linux/arm64.
-# @rspack/binding has optional platform-specific packages.
+# Verify that a legacy linux/arm64 platform with no libc constraint conservatively
+# includes both GNU and musl bindings.
 # bazel run //js/private/test/image/platform_deps:rspack_linux_arm64_test_update_all
 make_js_image_layer(
     name = "rspack_linux_arm64",
@@ -28,4 +28,33 @@ make_js_image_layer(
 assert_js_image_layer_listings(
     name = "rspack_linux_arm64_test",
     js_image_layer = ":rspack_linux_arm64",
+)
+
+# Verify that an explicit glibc constraint selects only the GNU arm64 binding.
+# @rspack/binding has optional platform-specific packages.
+# bazel run //js/private/test/image/platform_deps:rspack_linux_arm64_glibc_test_update_all
+make_js_image_layer(
+    name = "rspack_linux_arm64_glibc",
+    binary = ":bin",
+    platform = "//js/private/test/image:linux_arm64_glibc",
+    root = "/app",
+)
+
+assert_js_image_layer_listings(
+    name = "rspack_linux_arm64_glibc_test",
+    js_image_layer = ":rspack_linux_arm64_glibc",
+)
+
+# Verify that an explicit musl constraint selects only the musl arm64 binding.
+# bazel run //js/private/test/image/platform_deps:rspack_linux_arm64_musl_test_update_all
+make_js_image_layer(
+    name = "rspack_linux_arm64_musl",
+    binary = ":bin",
+    platform = "//js/private/test/image:linux_arm64_musl",
+    root = "/app",
+)
+
+assert_js_image_layer_listings(
+    name = "rspack_linux_arm64_musl_test",
+    js_image_layer = ":rspack_linux_arm64_musl",
 )

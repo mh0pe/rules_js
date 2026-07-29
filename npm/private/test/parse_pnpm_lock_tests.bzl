@@ -37,8 +37,9 @@ expected_packages = {
         "resolution": {
             "integrity": "sha512-t/lwpVXG/jmxTotGEsmjwuihC2Lvz/Iqt63o78SI3O5XallxtFp5j2WM2M6HwkFiii9I42KdlAF8B3plZMz0Fw==",
         },
-        "cpu": None,
-        "os": None,
+        "cpu": ["x64"],
+        "libc": ["glibc"],
+        "os": ["linux"],
     },
     "lodash@file:lodash-4.17.21.tgz": {
         "name": "lodash",
@@ -53,6 +54,7 @@ expected_packages = {
             "tarball": "file:lodash-4.17.21.tgz",
         },
         "cpu": None,
+        "libc": ["musl"],
         "os": None,
     },
 }
@@ -86,13 +88,17 @@ def _parse_lockfile_v9_test_impl(ctx):
       "resolution": {
         "integrity": "sha512-t/lwpVXG/jmxTotGEsmjwuihC2Lvz/Iqt63o78SI3O5XallxtFp5j2WM2M6HwkFiii9I42KdlAF8B3plZMz0Fw=="
       },
-      "hasBin": true
+      "hasBin": true,
+      "cpu": ["x64"],
+      "libc": ["glibc"],
+      "os": ["linux"]
     },
     "lodash@file:lodash-4.17.21.tgz": {
       "resolution": {
         "integrity": "sha512-v2kDEe57lecTulaDIuNTPy3Ry4gLGJ6Z1O3vE1krgXZNrsQ+LFTGHVxVjcXPs17LhbZVGedAJv8XZ1tvj5FvSg==",
         "tarball": "file:lodash-4.17.21.tgz"
       },
+      "libc": "musl",
       "version": "4.17.21"
     }
   },
@@ -151,4 +157,7 @@ TESTS = [
 
 def parse_pnpm_lock_tests(name):
     for index, test_rule in enumerate(TESTS):
-        test_rule(name = "{}_test_{}".format(name, index))
+        test_rule(
+            name = "{}_test_{}".format(name, index),
+            size = "small",
+        )

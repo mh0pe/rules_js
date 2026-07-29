@@ -83,27 +83,53 @@ def npm_imported_package_store_internal():
             "@aspect_rules_js//platforms/pnpm:darwin_x64": {
                 ":.aspect_rules_js/node_modules/sass-embedded-darwin-x64@1.97.3": "sass-embedded-darwin-x64",
             },
-            "@aspect_rules_js//platforms/pnpm:linux_arm": {
-                ":.aspect_rules_js/node_modules/sass-embedded-linux-arm@1.97.3": "sass-embedded-linux-arm",
-                ":.aspect_rules_js/node_modules/sass-embedded-linux-musl-arm@1.97.3": "sass-embedded-linux-musl-arm",
-            },
-            "@aspect_rules_js//platforms/pnpm:linux_arm64": {
-                ":.aspect_rules_js/node_modules/sass-embedded-linux-arm64@1.97.3": "sass-embedded-linux-arm64",
-                ":.aspect_rules_js/node_modules/sass-embedded-linux-musl-arm64@1.97.3": "sass-embedded-linux-musl-arm64",
-            },
-            "@aspect_rules_js//platforms/pnpm:linux_riscv64": {
-                ":.aspect_rules_js/node_modules/sass-embedded-linux-musl-riscv64@1.97.3": "sass-embedded-linux-musl-riscv64",
-                ":.aspect_rules_js/node_modules/sass-embedded-linux-riscv64@1.97.3": "sass-embedded-linux-riscv64",
-            },
-            "@aspect_rules_js//platforms/pnpm:linux_x64": {
-                ":.aspect_rules_js/node_modules/sass-embedded-linux-musl-x64@1.97.3": "sass-embedded-linux-musl-x64",
-                ":.aspect_rules_js/node_modules/sass-embedded-linux-x64@1.97.3": "sass-embedded-linux-x64",
-            },
             "@aspect_rules_js//platforms/pnpm:win32_arm64": {
                 ":.aspect_rules_js/node_modules/sass-embedded-win32-arm64@1.97.3": "sass-embedded-win32-arm64",
             },
             "@aspect_rules_js//platforms/pnpm:win32_x64": {
                 ":.aspect_rules_js/node_modules/sass-embedded-win32-x64@1.97.3": "sass-embedded-win32-x64",
+            },
+            "//conditions:default": {},
+        }) | select({
+            "@aspect_rules_js//platforms/pnpm:linux_arm_glibc": {
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-arm@1.97.3": "sass-embedded-linux-arm",
+            },
+            "@aspect_rules_js//platforms/pnpm:linux_arm_unconstrained": {
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-arm@1.97.3": "sass-embedded-linux-arm",
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-musl-arm@1.97.3": "sass-embedded-linux-musl-arm",
+            },
+            "@aspect_rules_js//platforms/pnpm:linux_arm64_glibc": {
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-arm64@1.97.3": "sass-embedded-linux-arm64",
+            },
+            "@aspect_rules_js//platforms/pnpm:linux_arm64_unconstrained": {
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-arm64@1.97.3": "sass-embedded-linux-arm64",
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-musl-arm64@1.97.3": "sass-embedded-linux-musl-arm64",
+            },
+            "@aspect_rules_js//platforms/pnpm:linux_arm_musl": {
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-musl-arm@1.97.3": "sass-embedded-linux-musl-arm",
+            },
+            "@aspect_rules_js//platforms/pnpm:linux_arm64_musl": {
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-musl-arm64@1.97.3": "sass-embedded-linux-musl-arm64",
+            },
+            "@aspect_rules_js//platforms/pnpm:linux_riscv64_musl": {
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-musl-riscv64@1.97.3": "sass-embedded-linux-musl-riscv64",
+            },
+            "@aspect_rules_js//platforms/pnpm:linux_riscv64_unconstrained": {
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-musl-riscv64@1.97.3": "sass-embedded-linux-musl-riscv64",
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-riscv64@1.97.3": "sass-embedded-linux-riscv64",
+            },
+            "@aspect_rules_js//platforms/pnpm:linux_x64_musl": {
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-musl-x64@1.97.3": "sass-embedded-linux-musl-x64",
+            },
+            "@aspect_rules_js//platforms/pnpm:linux_x64_unconstrained": {
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-musl-x64@1.97.3": "sass-embedded-linux-musl-x64",
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-x64@1.97.3": "sass-embedded-linux-x64",
+            },
+            "@aspect_rules_js//platforms/pnpm:linux_riscv64_glibc": {
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-riscv64@1.97.3": "sass-embedded-linux-riscv64",
+            },
+            "@aspect_rules_js//platforms/pnpm:linux_x64_glibc": {
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-x64@1.97.3": "sass-embedded-linux-x64",
             },
             "//conditions:default": {},
         }),
@@ -168,27 +194,53 @@ def npm_imported_package_store_internal():
             "@aspect_rules_js//platforms/pnpm:darwin_x64": {
                 ":.aspect_rules_js/node_modules/sass-embedded-darwin-x64@1.97.3/ref": "sass-embedded-darwin-x64",
             },
-            "@aspect_rules_js//platforms/pnpm:linux_arm": {
-                ":.aspect_rules_js/node_modules/sass-embedded-linux-arm@1.97.3/ref": "sass-embedded-linux-arm",
-                ":.aspect_rules_js/node_modules/sass-embedded-linux-musl-arm@1.97.3/ref": "sass-embedded-linux-musl-arm",
-            },
-            "@aspect_rules_js//platforms/pnpm:linux_arm64": {
-                ":.aspect_rules_js/node_modules/sass-embedded-linux-arm64@1.97.3/ref": "sass-embedded-linux-arm64",
-                ":.aspect_rules_js/node_modules/sass-embedded-linux-musl-arm64@1.97.3/ref": "sass-embedded-linux-musl-arm64",
-            },
-            "@aspect_rules_js//platforms/pnpm:linux_riscv64": {
-                ":.aspect_rules_js/node_modules/sass-embedded-linux-musl-riscv64@1.97.3/ref": "sass-embedded-linux-musl-riscv64",
-                ":.aspect_rules_js/node_modules/sass-embedded-linux-riscv64@1.97.3/ref": "sass-embedded-linux-riscv64",
-            },
-            "@aspect_rules_js//platforms/pnpm:linux_x64": {
-                ":.aspect_rules_js/node_modules/sass-embedded-linux-musl-x64@1.97.3/ref": "sass-embedded-linux-musl-x64",
-                ":.aspect_rules_js/node_modules/sass-embedded-linux-x64@1.97.3/ref": "sass-embedded-linux-x64",
-            },
             "@aspect_rules_js//platforms/pnpm:win32_arm64": {
                 ":.aspect_rules_js/node_modules/sass-embedded-win32-arm64@1.97.3/ref": "sass-embedded-win32-arm64",
             },
             "@aspect_rules_js//platforms/pnpm:win32_x64": {
                 ":.aspect_rules_js/node_modules/sass-embedded-win32-x64@1.97.3/ref": "sass-embedded-win32-x64",
+            },
+            "//conditions:default": {},
+        }) | select({
+            "@aspect_rules_js//platforms/pnpm:linux_arm_glibc": {
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-arm@1.97.3/ref": "sass-embedded-linux-arm",
+            },
+            "@aspect_rules_js//platforms/pnpm:linux_arm_unconstrained": {
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-arm@1.97.3/ref": "sass-embedded-linux-arm",
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-musl-arm@1.97.3/ref": "sass-embedded-linux-musl-arm",
+            },
+            "@aspect_rules_js//platforms/pnpm:linux_arm64_glibc": {
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-arm64@1.97.3/ref": "sass-embedded-linux-arm64",
+            },
+            "@aspect_rules_js//platforms/pnpm:linux_arm64_unconstrained": {
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-arm64@1.97.3/ref": "sass-embedded-linux-arm64",
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-musl-arm64@1.97.3/ref": "sass-embedded-linux-musl-arm64",
+            },
+            "@aspect_rules_js//platforms/pnpm:linux_arm_musl": {
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-musl-arm@1.97.3/ref": "sass-embedded-linux-musl-arm",
+            },
+            "@aspect_rules_js//platforms/pnpm:linux_arm64_musl": {
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-musl-arm64@1.97.3/ref": "sass-embedded-linux-musl-arm64",
+            },
+            "@aspect_rules_js//platforms/pnpm:linux_riscv64_musl": {
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-musl-riscv64@1.97.3/ref": "sass-embedded-linux-musl-riscv64",
+            },
+            "@aspect_rules_js//platforms/pnpm:linux_riscv64_unconstrained": {
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-musl-riscv64@1.97.3/ref": "sass-embedded-linux-musl-riscv64",
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-riscv64@1.97.3/ref": "sass-embedded-linux-riscv64",
+            },
+            "@aspect_rules_js//platforms/pnpm:linux_x64_musl": {
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-musl-x64@1.97.3/ref": "sass-embedded-linux-musl-x64",
+            },
+            "@aspect_rules_js//platforms/pnpm:linux_x64_unconstrained": {
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-musl-x64@1.97.3/ref": "sass-embedded-linux-musl-x64",
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-x64@1.97.3/ref": "sass-embedded-linux-x64",
+            },
+            "@aspect_rules_js//platforms/pnpm:linux_riscv64_glibc": {
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-riscv64@1.97.3/ref": "sass-embedded-linux-riscv64",
+            },
+            "@aspect_rules_js//platforms/pnpm:linux_x64_glibc": {
+                ":.aspect_rules_js/node_modules/sass-embedded-linux-x64@1.97.3/ref": "sass-embedded-linux-x64",
             },
             "//conditions:default": {},
         }),

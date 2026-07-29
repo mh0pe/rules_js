@@ -1,12 +1,16 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load(":index.bzl", "PNPM_ARCHS", "PNPM_PLATFORMS")
+load(":index.bzl", "PNPM_ARCHS", "PNPM_LIBCS", "PNPM_LIBC_DEFAULT", "PNPM_LIBC_DEFAULT_CONSTRAINT", "PNPM_PLATFORMS")
 
-# Constraints representing the pnpm [os] and [cpu] fields.
+# Constraints representing the pnpm [os], [cpu], and [libc] fields.
 bzl_library(
     name = "index_bzl",
     srcs = ["index.bzl"],
     visibility = ["//npm:__subpackages__"],
 )
+
+PNPM_LIBCS_WITH_DEFAULT = dict(PNPM_LIBCS)
+
+PNPM_LIBCS_WITH_DEFAULT[PNPM_LIBC_DEFAULT] = PNPM_LIBC_DEFAULT_CONSTRAINT
 
 # Support pnpm platforms
 [
@@ -30,6 +34,17 @@ bzl_library(
     if target
 ]
 
+# Support pnpm libc implementations
+[
+    alias(
+        name = libc,
+        actual = target,
+        visibility = ["//visibility:public"],
+    )
+    for libc, target in PNPM_LIBCS_WITH_DEFAULT.items()
+    if target
+]
+
 # Supported pnpm platform * architecture pairs
 [
     [
@@ -41,6 +56,65 @@ bzl_library(
             ],
             visibility = ["//visibility:public"],
         )
+        for a, atarget in PNPM_ARCHS.items()
+        if atarget
+    ]
+    for p, ptarget in PNPM_PLATFORMS.items()
+    if ptarget
+]
+
+# Supported pnpm platform * libc pairs
+[
+    [
+        config_setting(
+            name = "{}_{}".format(p, libc),
+            constraint_values = [
+                ptarget,
+                libc_target,
+            ],
+            visibility = ["//visibility:public"],
+        )
+        for libc, libc_target in PNPM_LIBCS_WITH_DEFAULT.items()
+        if libc_target
+    ]
+    for p, ptarget in PNPM_PLATFORMS.items()
+    if ptarget
+]
+
+# Supported pnpm architecture * libc pairs
+[
+    [
+        config_setting(
+            name = "{}_{}".format(a, libc),
+            constraint_values = [
+                atarget,
+                libc_target,
+            ],
+            visibility = ["//visibility:public"],
+        )
+        for libc, libc_target in PNPM_LIBCS_WITH_DEFAULT.items()
+        if libc_target
+    ]
+    for a, atarget in PNPM_ARCHS.items()
+    if atarget
+]
+
+# Supported pnpm platform * architecture * libc tuples
+[
+    [
+        [
+            config_setting(
+                name = "{}_{}_{}".format(p, a, libc),
+                constraint_values = [
+                    ptarget,
+                    atarget,
+                    libc_target,
+                ],
+                visibility = ["//visibility:public"],
+            )
+            for libc, libc_target in PNPM_LIBCS_WITH_DEFAULT.items()
+            if libc_target
+        ]
         for a, atarget in PNPM_ARCHS.items()
         if atarget
     ]

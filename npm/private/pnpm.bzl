@@ -2,7 +2,7 @@
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@bazel_skylib//lib:types.bzl", "types")
-load("//platforms/pnpm:index.bzl", "PNPM_ARCHS", "PNPM_ARCH_ALIASES", "PNPM_PLATFORMS")
+load("//platforms/pnpm:index.bzl", "PNPM_ARCHS", "PNPM_ARCH_ALIASES", "PNPM_LIBCS", "PNPM_LIBC_DEFAULT", "PNPM_PLATFORMS")
 load(":utils.bzl", "utils")
 
 # Metadata about a pnpm "project" (importer).
@@ -36,9 +36,10 @@ def _new_import_info(dependencies, dev_dependencies, optional_dependencies):
 #
 #   resolution: the lockfile resolution field
 #   cpu: list of allowed cpu architectures or None
+#   libc: list of allowed libc implementations or None
 #   os: list of allowed operating systems or None
 
-def _new_package_info(name, dependencies, optional_dependencies, has_bin, optional, version, friendly_version, resolution, cpu, os):
+def _new_package_info(name, dependencies, optional_dependencies, has_bin, optional, version, friendly_version, resolution, cpu, libc, os):
     return {
         "name": name,
         "dependencies": dependencies,
@@ -49,8 +50,22 @@ def _new_package_info(name, dependencies, optional_dependencies, has_bin, option
         "friendly_version": friendly_version,
         "resolution": resolution,
         "cpu": cpu,
+        "libc": libc,
         "os": os,
     }
+
+def _normalize_package_constraint(value, kind, package_key):
+    if value == None:
+        return None
+    if types.is_string(value):
+        return [value]
+    if not types.is_list(value) or any([not types.is_string(item) for item in value]):
+        fail("package {} has invalid {} constraint {}; expected a string or list of strings".format(
+            package_key,
+            kind,
+            value,
+        ))
+    return value
 
 def _to_bazel_os_cpu_constraints(oss, cpus):
     oss = _resolve_pnpm_constraint_values(oss, PNPM_PLATFORMS, {}, "os")
@@ -68,6 +83,43 @@ def _to_bazel_os_constraints(oss):
 def _to_bazel_cpu_constraints(cpus):
     cpus = _resolve_pnpm_constraint_values(cpus, PNPM_ARCHS, PNPM_ARCH_ALIASES, "cpu")
     return ["@aspect_rules_js//platforms/pnpm:{}".format(cpu) for cpu in cpus]
+
+def _resolve_pnpm_libc_constraint_values(libcs):
+    libcs = _resolve_pnpm_constraint_values(libcs, PNPM_LIBCS, {}, "libc")
+    return libcs + [PNPM_LIBC_DEFAULT] if libcs else []
+
+def _to_bazel_libc_constraints(libcs):
+    libcs = _resolve_pnpm_libc_constraint_values(libcs)
+    return ["@aspect_rules_js//platforms/pnpm:{}".format(libc) for libc in libcs]
+
+def _to_bazel_os_libc_constraints(oss, libcs):
+    oss = _resolve_pnpm_constraint_values(oss, PNPM_PLATFORMS, {}, "os")
+    libcs = _resolve_pnpm_libc_constraint_values(libcs)
+    return [
+        "@aspect_rules_js//platforms/pnpm:{}_{}".format(os, libc)
+        for os in oss
+        for libc in libcs
+    ]
+
+def _to_bazel_cpu_libc_constraints(cpus, libcs):
+    cpus = _resolve_pnpm_constraint_values(cpus, PNPM_ARCHS, PNPM_ARCH_ALIASES, "cpu")
+    libcs = _resolve_pnpm_libc_constraint_values(libcs)
+    return [
+        "@aspect_rules_js//platforms/pnpm:{}_{}".format(cpu, libc)
+        for cpu in cpus
+        for libc in libcs
+    ]
+
+def _to_bazel_os_cpu_libc_constraints(oss, cpus, libcs):
+    oss = _resolve_pnpm_constraint_values(oss, PNPM_PLATFORMS, {}, "os")
+    cpus = _resolve_pnpm_constraint_values(cpus, PNPM_ARCHS, PNPM_ARCH_ALIASES, "cpu")
+    libcs = _resolve_pnpm_libc_constraint_values(libcs)
+    return [
+        "@aspect_rules_js//platforms/pnpm:{}_{}_{}".format(os, cpu, libc)
+        for os in oss
+        for cpu in cpus
+        for libc in libcs
+    ]
 
 def _resolve_pnpm_constraint_values(values, known_map, aliases_map, kind):
     if not values:
@@ -245,8 +297,9 @@ def _convert_v9_packages(packages, snapshots, no_optional):
             has_bin = package_data.get("hasBin", False),
             optional = optional,
             resolution = package_data["resolution"],
-            cpu = package_data.get("cpu", None),
-            os = package_data.get("os", None),
+            cpu = _normalize_package_constraint(package_data.get("cpu", None), "cpu", static_key),
+            libc = _normalize_package_constraint(package_data.get("libc", None), "libc", static_key),
+            os = _normalize_package_constraint(package_data.get("os", None), "os", static_key),
         )
 
     return result
@@ -384,7 +437,11 @@ pnpm = struct(
     assert_lockfile_version = _assert_lockfile_version,
     parse_pnpm_lock_json = _parse_pnpm_lock_json,
     parse_pnpm_workspace_json = _parse_pnpm_workspace_json,
-    to_bazel_os_cpu_constraints = _to_bazel_os_cpu_constraints,
-    to_bazel_os_constraints = _to_bazel_os_constraints,
     to_bazel_cpu_constraints = _to_bazel_cpu_constraints,
+    to_bazel_cpu_libc_constraints = _to_bazel_cpu_libc_constraints,
+    to_bazel_libc_constraints = _to_bazel_libc_constraints,
+    to_bazel_os_constraints = _to_bazel_os_constraints,
+    to_bazel_os_cpu_constraints = _to_bazel_os_cpu_constraints,
+    to_bazel_os_cpu_libc_constraints = _to_bazel_os_cpu_libc_constraints,
+    to_bazel_os_libc_constraints = _to_bazel_os_libc_constraints,
 )
