@@ -72,6 +72,18 @@ def _yaml_root_keys_ambiguity_test_impl(ctx):
     _, error = yarn_lock_repository_testonly.yaml_root_keys("\tnodeLinker: pnp")
     asserts.equals(env, "tabs are not supported in YAML indentation", error)
 
+    for source in [
+        "---\nnodeLinker: pnp",
+        "nodeLinker: pnp\n...",
+        "nodeLinker: pnp\n---\nenableScripts: false",
+        "nodeLinker: pnp\n... # explicit document end",
+    ]:
+        _, error = yarn_lock_repository_testonly.yaml_root_keys(source)
+        asserts.equals(env, "YAML document boundary markers cannot be merged safely", error)
+
+    _, error = yarn_lock_repository_testonly.yaml_root_keys("%YAML 1.2\n---\nnodeLinker: pnp")
+    asserts.equals(env, "YAML directives cannot be merged safely", error)
+
     return unittest.end(env)
 
 yaml_root_keys_test = unittest.make(_yaml_root_keys_test_impl)

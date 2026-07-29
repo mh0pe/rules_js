@@ -69,7 +69,11 @@ def _yaml_root_indent(source_configuration):
     root_indent = None
     for line in source_configuration.splitlines():
         stripped = line.strip()
-        if not stripped or stripped.startswith("#") or stripped in ["---", "..."] or stripped.startswith("%"):
+        if stripped in ["---", "..."] or stripped.startswith("--- #") or stripped.startswith("... #"):
+            return None, "YAML document boundary markers cannot be merged safely"
+        if stripped.startswith("%"):
+            return None, "YAML directives cannot be merged safely"
+        if not stripped or stripped.startswith("#"):
             continue
 
         indent = 0
