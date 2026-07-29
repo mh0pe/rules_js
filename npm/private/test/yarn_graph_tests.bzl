@@ -175,6 +175,50 @@ def _valid_berry_graph_test_impl(ctx):
         asserts.equals(env, _PACKAGE_KEY, importers["."]["dependencies"][_PACKAGE_NAME])
     return unittest.end(env)
 
+def _conditions_and_dependency_filtering_test_impl(ctx):
+    env = unittest.begin(ctx)
+
+    conditional_graph = _graph("berry-v8")
+    conditional_graph["packages"][_PACKAGE_KEY]["conditions"] = "os=linux & cpu=x64 & libc=glibc"
+    _, conditional_packages, error = yarn_graph.parse_json(
+        json.encode(conditional_graph),
+        _GRAPH_LABEL,
+    )
+    asserts.equals(env, None, error)
+    asserts.equals(env, ["linux"], conditional_packages[_PACKAGE_KEY]["os"])
+    asserts.equals(env, ["x64"], conditional_packages[_PACKAGE_KEY]["cpu"])
+    asserts.equals(env, ["glibc"], conditional_packages[_PACKAGE_KEY]["libc"])
+
+    dev_graph = _graph("berry-v8")
+    dev_graph["importers"]["."]["dependencies"] = {}
+    dev_graph["importers"]["."]["dev_dependencies"] = {_PACKAGE_NAME: _PACKAGE_VERSION}
+    dev_graph["packages"][_PACKAGE_KEY]["dev_only"] = True
+    dev_importers, dev_packages, error = yarn_graph.parse_json(
+        json.encode(dev_graph),
+        _GRAPH_LABEL,
+        True,
+        False,
+    )
+    asserts.equals(env, None, error)
+    asserts.equals(env, {}, dev_importers["."]["dev_dependencies"])
+    asserts.equals(env, {}, dev_packages)
+
+    optional_graph = _graph("berry-v8")
+    optional_graph["importers"]["."]["dependencies"] = {}
+    optional_graph["importers"]["."]["optional_dependencies"] = {_PACKAGE_NAME: _PACKAGE_VERSION}
+    optional_graph["packages"][_PACKAGE_KEY]["optional"] = True
+    optional_importers, optional_packages, error = yarn_graph.parse_json(
+        json.encode(optional_graph),
+        _GRAPH_LABEL,
+        False,
+        True,
+    )
+    asserts.equals(env, None, error)
+    asserts.equals(env, {}, optional_importers["."]["optional_dependencies"])
+    asserts.equals(env, {}, optional_packages)
+
+    return unittest.end(env)
+
 def _linker_pnp_matrix_test_impl(ctx):
     env = unittest.begin(ctx)
     baseline_importers = None
@@ -249,6 +293,7 @@ def _valid_classic_graph_test_impl(ctx):
 
 _valid_berry_graph_test = unittest.make(_valid_berry_graph_test_impl)
 _valid_classic_graph_test = unittest.make(_valid_classic_graph_test_impl)
+_conditions_and_dependency_filtering_test = unittest.make(_conditions_and_dependency_filtering_test_impl)
 _linker_pnp_matrix_test = unittest.make(_linker_pnp_matrix_test_impl)
 _source_schema_rejection_test = unittest.make(_source_schema_rejection_test_impl)
 
@@ -303,6 +348,10 @@ def yarn_graph_tests(name):
     valid_classic = name + "_valid_classic_test"
     _valid_classic_graph_test(name = valid_classic)
     tests.append(":" + valid_classic)
+
+    conditions_and_filtering = name + "_conditions_and_dependency_filtering_test"
+    _conditions_and_dependency_filtering_test(name = conditions_and_filtering)
+    tests.append(":" + conditions_and_filtering)
 
     linker_pnp_matrix = name + "_linker_pnp_matrix_test"
     _linker_pnp_matrix_test(name = linker_pnp_matrix)

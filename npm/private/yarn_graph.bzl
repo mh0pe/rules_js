@@ -719,7 +719,7 @@ def _normalize_dependency_map(value, path, packages, directory_refs):
             )
     return utils.sorted_map(result)
 
-def _parse_yarn_graph_json(content, graph_label):
+def _parse_yarn_graph_json(content, graph_label, no_dev = False, no_optional = False):
     if not content:
         return _error("file is empty")
 
@@ -856,6 +856,16 @@ def _parse_yarn_graph_json(content, graph_label):
             ],
             "packages[{}]".format(package_key),
         )
+        dev_only = _expect_bool(
+            raw_package.get("dev_only"),
+            "packages[{}].dev_only".format(package_key),
+        )
+        optional = _expect_bool(
+            raw_package.get("optional"),
+            "packages[{}].optional".format(package_key),
+        )
+        if (no_dev and dev_only) or (no_optional and optional):
+            continue
         name = _expect_string(raw_package.get("name"), "packages[{}].name".format(package_key))
         version = _expect_string(raw_package.get("version"), "packages[{}].version".format(package_key))
         expected_key = _package_key(name, version)
@@ -1121,22 +1131,19 @@ def _parse_yarn_graph_json(content, graph_label):
         packages[package_key] = {
             "bins": bins,
             "conditions": conditions,
+            "cpu": conditions.get("cpu", []),
             "dependencies": {},
-            "dev_only": _expect_bool(
-                raw_package.get("dev_only"),
-                "packages[{}].dev_only".format(package_key),
-            ),
+            "dev_only": dev_only,
             "friendly_version": _expect_string(
                 raw_package.get("friendly_version"),
                 "packages[{}].friendly_version".format(package_key),
             ),
             "has_bin": has_bin,
+            "libc": conditions.get("libc", []),
             "lifecycle_scripts_enabled": enable_scripts,
             "name": name,
-            "optional": _expect_bool(
-                raw_package.get("optional"),
-                "packages[{}].optional".format(package_key),
-            ),
+            "optional": optional,
+            "os": conditions.get("os", []),
             "optional_dependencies": {},
             "requires_build": requires_build,
             "resolution": normalized_resolution,
@@ -1159,7 +1166,7 @@ def _parse_yarn_graph_json(content, graph_label):
             packages,
             directory_refs,
         )
-        package_info["optional_dependencies"] = _normalize_dependency_map(
+        package_info["optional_dependencies"] = {} if no_optional else _normalize_dependency_map(
             raw_package.get("optional_dependencies", {}),
             "packages[{}].optional_dependencies".format(package_key),
             packages,
@@ -1214,6 +1221,9 @@ def _parse_yarn_graph_json(content, graph_label):
             },
         }
         for field in ["dependencies", "dev_dependencies", "optional_dependencies"]:
+            if (no_dev and field == "dev_dependencies") or (no_optional and field == "optional_dependencies"):
+                importers[normalized_path][field] = {}
+                continue
             importers[normalized_path][field] = _normalize_dependency_map(
                 raw_importer.get(field, {}),
                 "importers[{}].{}".format(import_path, field),

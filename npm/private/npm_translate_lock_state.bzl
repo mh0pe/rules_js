@@ -475,6 +475,8 @@ def _load_yarn_graph(priv, rctx, attr):
     importers, packages, graph_parse_err = yarn_graph.parse_json(
         graph_content,
         attr.yarn_graph,
+        attr.no_dev,
+        attr.no_optional,
     )
     if graph_parse_err != None:
         fail(graph_parse_err)

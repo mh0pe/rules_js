@@ -167,37 +167,6 @@ npm.npm_translate_lock(
 use_repo(npm, "npm")
 ```
 
-The equivalent WORKSPACE setup is:
-
-```starlark
-load(
-    "@aspect_rules_js//npm:repositories.bzl",
-    "npm_translate_lock",
-    "yarn_lock_repository",
-)
-
-yarn_lock_repository(
-    name = "generated-yarn-graph",
-    data = [
-        "//:.yarnrc.yml",
-        "//:package.json",
-        "//packages/example:package.json",
-    ],
-    binary_data = ["//vendor:example.tgz"],
-    expected_graph_sha256 = "<64 lowercase hex characters>",
-    supported_cpu = ["current", "arm64", "x64"],
-    supported_libc = ["current", "glibc", "musl"],
-    supported_os = ["current", "darwin", "linux", "win32"],
-    yarn_lock = "//:yarn.lock",
-    yarn_version = "4.5.0",
-)
-
-npm_translate_lock(
-    name = "npm",
-    yarn_graph = "@generated-yarn-graph//:yarn_graph.json",
-)
-```
-
 The producer supports Yarn Classic v1 and Berry lock metadata versions 4, 6,
 and 8. It does not invoke Corepack, pnpm, `yarn install`, a Yarn linker, or
 package lifecycle scripts. Text inputs in `data` and byte-for-byte copied
