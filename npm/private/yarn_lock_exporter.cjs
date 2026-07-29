@@ -2551,13 +2551,12 @@ module.exports = {
           const descriptor =
             frozenDescriptors.get(descriptorHash) ||
             project.storedDescriptors.get(descriptorHash);
-          let pinnedCompatibilityResolution = false;
+          let generatedVirtualResolution = false;
           if (
             !frozenLocatorHash &&
             resolvedLocatorHash &&
             descriptor &&
-            structUtils.isVirtualDescriptor(descriptor) &&
-            pinnedCompatibilityIdents.has(descriptor.identHash)
+            structUtils.isVirtualDescriptor(descriptor)
           ) {
             const devirtualizedDescriptor = structUtils.devirtualizeDescriptor(
               descriptor,
@@ -2572,11 +2571,11 @@ module.exports = {
               structUtils.isVirtualLocator(resolvedLocator)
               ? structUtils.devirtualizeLocator(resolvedLocator)
               : resolvedLocator;
-            pinnedCompatibilityResolution =
+            generatedVirtualResolution =
               frozenPhysicalLocatorHash !== undefined &&
               resolvedPhysicalLocator?.locatorHash === frozenPhysicalLocatorHash;
           }
-          if (pinnedCompatibilityResolution)
+          if (generatedVirtualResolution)
             continue;
           throw new Error(
             `Resolved descriptor-to-locator mapping differs from yarn.lock: ` +
