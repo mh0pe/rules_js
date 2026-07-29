@@ -54,6 +54,8 @@ bzl_library(
         "//npm/private:npm_import",
         "//npm/private:npm_translate_lock",
         "//npm/private:pnpm_repository",
+        "//npm/private:yarn_lock_repository",
+        "//npm/private:yarn_tool_repository",
     ],
 )
 

@@ -1,19 +1,34 @@
-"""Generate a pnpm lockfile from a Yarn lockfile in an external repository."""
+"""Generate a normalized Yarn graph and verified Yarn cache archives."""
 
 load("@bazel_lib//lib:repo_utils.bzl", "repo_utils")
 load("@bazel_skylib//lib:paths.bzl", "paths")
+load(":yarn_tool_repository.bzl", "YARN_LICENSE_FILENAMES", "download_yarn_release")
 
 _BUILD_FILENAME = "BUILD.bazel"
 _ENV_RUNNER_FILENAME = ".aspect_rules_js_env_runner.mjs"
-_EMPTY_NPMRC_FILENAME = ".aspect_rules_js_empty_npmrc"
-_LOCK_VERIFY_FILENAME = ".aspect_rules_js_verify_lock.mjs"
-_PNPM_LOCK_FILENAME = "pnpm-lock.yaml"
+_EXPORTER_FILENAME = ".aspect_rules_js_yarn_exporter.cjs"
+_GRAPH_FILENAME = "yarn_graph.json"
+_ISOLATED_RC_FILENAME = ".aspect_rules_js_project_yarnrc.yml"
+_PINNED_YARN_FILENAME = ".aspect_rules_js_yarn.js"
 _YARN_LOCK_FILENAME = "yarn.lock"
+_OPERATIONAL_ENVIRON = [
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "NODE_EXTRA_CA_CERTS",
+    "NO_PROXY",
+    "PATH",
+    "SSL_CERT_FILE",
+    "http_proxy",
+    "https_proxy",
+    "no_proxy",
+]
 _RESERVED_FILENAMES = [
     _ENV_RUNNER_FILENAME,
-    _EMPTY_NPMRC_FILENAME,
-    _LOCK_VERIFY_FILENAME,
-]
+    _EXPORTER_FILENAME,
+    _GRAPH_FILENAME,
+    _ISOLATED_RC_FILENAME,
+    _PINNED_YARN_FILENAME,
+] + YARN_LICENSE_FILENAMES
 
 def _label_path(label):
     path = paths.normalize(paths.join(label.package, label.name))
@@ -21,14 +36,18 @@ def _label_path(label):
         fail("input label resolves outside its repository: {}".format(label))
     return path
 
-def _copy_inputs(rctx):
+def _plan_inputs(rctx, lock_directory, package_json_path):
     source_repo = rctx.attr.yarn_lock.repo_name
     copied = {}
+    cleanup_paths = []
+    archive_directory = paths.join(lock_directory, "archives")
+    text_inputs = []
+    binary_inputs = []
 
-    for input_label in [rctx.attr.yarn_lock] + rctx.attr.data + rctx.attr.preupdate:
+    for input_label in [rctx.attr.yarn_lock] + rctx.attr.data:
         if input_label.repo_name != source_repo:
             fail(
-                "all yarn_lock, data, and preupdate labels must come from the same repository; " +
+                "all yarn_lock and data labels must come from the same repository; " +
                 "{} is not in @@{}".format(input_label, source_repo),
             )
 
@@ -45,29 +64,143 @@ def _copy_inputs(rctx):
                 )
             continue
 
-        if paths.basename(destination) == _BUILD_FILENAME or destination in _RESERVED_FILENAMES:
-            fail("{} is reserved for the generated lockfile package".format(destination))
+        if paths.basename(destination) == _BUILD_FILENAME or paths.basename(destination) in _RESERVED_FILENAMES:
+            fail("{} is reserved for the generated graph repository".format(destination))
+        if destination == archive_directory or destination.startswith(archive_directory + "/"):
+            fail("{} is reserved for verified Yarn cache archives".format(destination))
 
+        content = rctx.read(input_label)
+        text_inputs.append((destination, content))
+        copied[destination] = str(input_label)
+        cleanup_paths.append(destination)
+        if paths.basename(destination) == ".yarnrc.yml":
+            isolated_configuration = paths.join(paths.dirname(destination), _ISOLATED_RC_FILENAME)
+            text_inputs.append((isolated_configuration, content))
+            cleanup_paths.append(isolated_configuration)
+
+    for input_label in rctx.attr.binary_data:
+        if input_label.repo_name != source_repo:
+            fail(
+                "all yarn_lock, data, and binary_data labels must come from the same repository; " +
+                "{} is not in @@{}".format(input_label, source_repo),
+            )
+        destination = _label_path(input_label)
+        if destination in copied:
+            fail("text and binary inputs both map to '{}'".format(destination))
+        if paths.basename(destination) == _BUILD_FILENAME or paths.basename(destination) in _RESERVED_FILENAMES:
+            fail("{} is reserved for the generated graph repository".format(destination))
+        if destination == archive_directory or destination.startswith(archive_directory + "/"):
+            fail("{} is reserved for verified Yarn cache archives".format(destination))
+        binary_inputs.append((destination, rctx.path(input_label)))
+        copied[destination] = str(input_label)
+        cleanup_paths.append(destination)
+
+    if package_json_path not in copied:
+        fail(
+            "data must include the package.json beside {} (expected '{}')".format(
+                rctx.attr.yarn_lock,
+                package_json_path,
+            ),
+        )
+
+    return copied, cleanup_paths, text_inputs, binary_inputs
+
+def _materialize_inputs(rctx, host_node, text_inputs, binary_inputs):
+    for destination, content in text_inputs:
+        rctx.file(destination, content, executable = False)
+    for destination, source_path in binary_inputs:
+        copy_result = rctx.execute(
+            [
+                host_node,
+                rctx.path(rctx.attr._input_copy_helper),
+                source_path,
+                rctx.path(destination),
+            ],
+            quiet = rctx.attr.quiet,
+            timeout = 600,
+        )
+        if copy_result.return_code:
+            _cleanup_repository_outputs(rctx, [destination])
+            _fail_execution(copy_result, "verified binary_data copy")
+
+def _relocate_yarn_licenses(rctx, lock_directory):
+    if not lock_directory:
+        return
+    for filename in YARN_LICENSE_FILENAMES:
         rctx.file(
-            destination,
-            rctx.read(input_label),
+            paths.join(lock_directory, filename),
+            rctx.read(filename),
             executable = False,
         )
-        copied[destination] = str(input_label)
+        rctx.delete(filename)
 
-    return copied
+def _cleanup_repository_outputs(rctx, cleanup_paths):
+    for cleanup_path in cleanup_paths + [
+        _ENV_RUNNER_FILENAME,
+        _EXPORTER_FILENAME,
+        ".aspect_rules_js_home",
+        ".aspect_rules_js_xdg_cache",
+        ".aspect_rules_js_xdg_config",
+        ".aspect_rules_js_yarn_cache",
+        ".aspect_rules_js_yarn_global",
+        _PINNED_YARN_FILENAME,
+    ]:
+        rctx.delete(cleanup_path)
 
-def _write_execution_helpers(rctx):
-    rctx.file(_EMPTY_NPMRC_FILENAME, "")
+def _write_execution_helper(rctx):
     rctx.file(
         _ENV_RUNNER_FILENAME,
         """\
 import { spawnSync } from "node:child_process";
-import { join } from "node:path";
+import { existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 
-const [repositoryRoot, command, ...args] = process.argv.slice(2);
-if (!repositoryRoot || !command) {
-  throw new Error("sanitized environment runner requires a repository root and command");
+const [repositoryRoot, sourceFormat, command, ...args] = process.argv.slice(2);
+if (!repositoryRoot || !sourceFormat || !command) {
+  throw new Error("Yarn environment runner requires repository root, source format, and command");
+}
+const repositoryRootPath = resolve(repositoryRoot);
+let configurationDirectory = resolve(process.cwd());
+while (true) {
+  const environmentFile = join(configurationDirectory, ".env.yarn");
+  if (existsSync(environmentFile)) {
+    throw new Error(
+      `Yarn environment injection is not allowed during native graph export: ${environmentFile}`,
+    );
+  }
+  const executableConfig = join(configurationDirectory, "yarn.config.cjs");
+  if (existsSync(executableConfig)) {
+    throw new Error(
+      `Executable Yarn project configuration is not allowed during native graph export: ${executableConfig}`,
+    );
+  }
+  if (configurationDirectory === repositoryRootPath)
+    break;
+  const parent = dirname(configurationDirectory);
+  if (parent === configurationDirectory || !configurationDirectory.startsWith(repositoryRootPath)) {
+    throw new Error("Yarn project directory escapes the generated repository");
+  }
+  configurationDirectory = parent;
+}
+configurationDirectory = dirname(repositoryRootPath);
+while (true) {
+  for (const filename of [
+    ".aspect_rules_js_project_yarnrc.yml",
+    ".env.yarn",
+    "yarn.config.cjs",
+  ]) {
+    const ambientPath = join(configurationDirectory, filename);
+    if (existsSync(ambientPath)) {
+      throw new Error(
+        `Ambient parent Yarn configuration is not allowed during native graph export: ` +
+        `${ambientPath}`,
+      );
+    }
+  }
+  const parent = dirname(configurationDirectory);
+  if (parent === configurationDirectory)
+    break;
+  configurationDirectory = parent;
 }
 const inherited = process.env;
 const allowed = [
@@ -89,30 +222,29 @@ const allowed = [
   "no_proxy",
 ];
 const env = Object.fromEntries(
-  allowed.flatMap((name) => inherited[name] === undefined ? [] : [[name, inherited[name]]]),
+  allowed.flatMap(name => inherited[name] === undefined ? [] : [[name, inherited[name]]]),
 );
 const home = join(repositoryRoot, ".aspect_rules_js_home");
-const emptyNpmrc = join(repositoryRoot, ".aspect_rules_js_empty_npmrc");
 Object.assign(env, {
   CI: "true",
-  COREPACK_HOME: join(repositoryRoot, ".aspect_rules_js_corepack"),
   HOME: home,
-  NPM_CONFIG_GLOBALCONFIG: emptyNpmrc,
-  NPM_CONFIG_IGNORE_SCRIPTS: "true",
-  NPM_CONFIG_LOCKFILE: "true",
-  NPM_CONFIG_LOCKFILE_ONLY: "true",
-  NPM_CONFIG_USERCONFIG: emptyNpmrc,
-  PNPM_HOME: join(repositoryRoot, ".aspect_rules_js_pnpm"),
   USERPROFILE: home,
-  XDG_CACHE_HOME: join(repositoryRoot, ".aspect_rules_js_cache"),
-  XDG_CONFIG_HOME: join(repositoryRoot, ".aspect_rules_js_config"),
-  npm_config_globalconfig: emptyNpmrc,
-  npm_config_ignore_scripts: "true",
-  npm_config_lockfile: "true",
-  npm_config_lockfile_only: "true",
-  npm_config_userconfig: emptyNpmrc,
+  XDG_CACHE_HOME: join(repositoryRoot, ".aspect_rules_js_xdg_cache"),
+  XDG_CONFIG_HOME: join(repositoryRoot, ".aspect_rules_js_xdg_config"),
+  YARN_CACHE_FOLDER: join(repositoryRoot, ".aspect_rules_js_yarn_cache"),
+  YARN_ENABLE_GLOBAL_CACHE: "false",
+  YARN_ENABLE_IMMUTABLE_INSTALLS: "true",
+  YARN_ENABLE_MIRROR: "false",
+  YARN_ENABLE_TELEMETRY: "false",
+  YARN_GLOBAL_FOLDER: join(repositoryRoot, ".aspect_rules_js_yarn_global"),
+  YARN_IGNORE_PATH: "1",
+  YARN_PLUGINS: join(repositoryRoot, ".aspect_rules_js_yarn_exporter.cjs"),
 });
-
+if (sourceFormat === "safe-config-inspection") {
+  env.YARN_RC_FILENAME = ".aspect_rules_js_no_project_yarnrc.yml";
+} else {
+  env.YARN_RC_FILENAME = ".aspect_rules_js_project_yarnrc.yml";
+}
 const result = spawnSync(command, args, {
   cwd: process.cwd(),
   encoding: "utf8",
@@ -124,40 +256,22 @@ if (result.error) throw result.error;
 process.exit(result.status ?? 1);
 """,
     )
-    rctx.file(
-        _LOCK_VERIFY_FILENAME,
-        """\
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 
-const [lockfile, expected] = process.argv.slice(2);
-const actual = createHash("sha256").update(readFileSync(lockfile)).digest("hex");
-if (!expected) {
-  console.error(
-    `generated pnpm lock requires a pinned checksum; set ` +
-    `expected_pnpm_lock_sha256 = "${actual}"`,
-  );
-  process.exit(1);
-}
-if (actual !== expected) {
-  console.error(`generated pnpm lock SHA-256 mismatch: expected ${expected}, got ${actual}`);
-  process.exit(1);
-}
-""",
-    )
-
-def _execute(rctx, host_node, arguments, description, working_directory):
-    result = rctx.execute(
+def _execute(rctx, host_node, source_format, arguments, working_directory):
+    return rctx.execute(
         [
             host_node,
             rctx.path(_ENV_RUNNER_FILENAME),
             rctx.path("."),
+            source_format,
         ] + arguments,
         quiet = rctx.attr.quiet,
+        timeout = 3600,
         working_directory = str(working_directory),
     )
-    if result.return_code:
-        fail("""\
+
+def _fail_execution(result, description):
+    fail("""\
 ERROR: {description} exited with status {status}.
 
 STDOUT:
@@ -166,19 +280,14 @@ STDOUT:
 STDERR:
 {stderr}
 """.format(
-            description = description,
-            status = result.return_code,
-            stdout = result.stdout,
-            stderr = result.stderr,
-        ))
+        description = description,
+        status = result.return_code,
+        stdout = result.stdout,
+        stderr = result.stderr,
+    ))
 
 def _yarn_lock_repository_impl(rctx):
-    expected_sha256 = rctx.attr.expected_pnpm_lock_sha256
-    if expected_sha256 and (len(expected_sha256) != 64 or any([
-        character not in "0123456789abcdef"
-        for character in expected_sha256.elems()
-    ])):
-        fail("expected_pnpm_lock_sha256 must be exactly 64 lowercase hexadecimal characters")
+    source_format = "auto"
 
     yarn_lock_path = _label_path(rctx.attr.yarn_lock)
     if paths.basename(yarn_lock_path) != _YARN_LOCK_FILENAME:
@@ -187,128 +296,208 @@ def _yarn_lock_repository_impl(rctx):
             rctx.attr.yarn_lock,
         ))
 
-    copied = _copy_inputs(rctx)
     lock_directory = paths.dirname(yarn_lock_path)
     package_json_path = paths.join(lock_directory, "package.json")
-    if package_json_path not in copied:
-        fail(
-            "data must include the package.json beside {} (expected '{}')".format(
-                rctx.attr.yarn_lock,
-                package_json_path,
-            ),
-        )
+    _, cleanup_paths, text_inputs, binary_inputs = _plan_inputs(
+        rctx,
+        lock_directory,
+        package_json_path,
+    )
 
     host_node = rctx.path(Label("@{}_{}//:bin/node".format(
         rctx.attr.node_toolchain_prefix,
         repo_utils.platform(rctx),
     )))
-    repository_root = rctx.path(".")
-    _write_execution_helpers(rctx)
+    project_root = rctx.path(lock_directory if lock_directory else ".")
+    download_yarn_release(
+        rctx,
+        rctx.attr.yarn_version,
+        rctx.attr.yarn_sha256,
+        bundle_output = _PINNED_YARN_FILENAME,
+    )
+    _relocate_yarn_licenses(rctx, lock_directory)
+    _materialize_inputs(rctx, host_node, text_inputs, binary_inputs)
+    yarn_path = rctx.path(_PINNED_YARN_FILENAME)
+    rctx.file(_EXPORTER_FILENAME, rctx.read(rctx.attr.exporter), executable = False)
+    _write_execution_helper(rctx)
 
-    for script in rctx.attr.preupdate:
-        script_path = _label_path(script)
-        rctx.report_progress("Running Yarn lock preprocessing script {}".format(script))
-        _execute(
-            rctx,
-            host_node,
-            [host_node, rctx.path(script_path)],
-            "node {}".format(script),
-            repository_root,
-        )
+    configuration_directory = lock_directory
+    ancestor_count = len(lock_directory.split("/")) if lock_directory else 0
+    for _ in range(ancestor_count + 1):
+        configuration_path = paths.join(configuration_directory, ".yarnrc.yml")
+        if rctx.path(configuration_path).exists:
+            inspection_result = _execute(
+                rctx,
+                host_node,
+                "safe-config-inspection",
+                [
+                    host_node,
+                    yarn_path,
+                    "rules-js",
+                    "inspect-config",
+                    "--path",
+                    rctx.path(configuration_path),
+                ],
+                project_root,
+            )
+            if inspection_result.return_code:
+                _cleanup_repository_outputs(rctx, cleanup_paths)
+                _fail_execution(inspection_result, "safe Yarn configuration inspection")
+        configuration_directory = paths.dirname(configuration_directory)
 
-    import_directory = rctx.path(lock_directory if lock_directory else ".")
-    rctx.report_progress("Generating {} from {}".format(
-        _PNPM_LOCK_FILENAME,
-        rctx.attr.yarn_lock,
-    ))
-    _execute(
+    version_result = _execute(
         rctx,
         host_node,
-        [
-            host_node,
-            rctx.path(rctx.attr.use_pnpm),
-            "import",
-        ],
-        "pnpm import",
-        import_directory,
+        source_format,
+        [host_node, yarn_path, "--version"],
+        project_root,
     )
+    if version_result.return_code:
+        _cleanup_repository_outputs(rctx, cleanup_paths)
+        _fail_execution(version_result, "pinned yarn.js version check")
+    yarn_version = version_result.stdout.strip()
+    if not yarn_version or "\n" in yarn_version:
+        _cleanup_repository_outputs(rctx, cleanup_paths)
+        fail("pinned yarn.js returned an invalid version: {!r}".format(yarn_version))
 
-    pnpm_lock_path = paths.join(lock_directory, _PNPM_LOCK_FILENAME)
-    if not rctx.path(pnpm_lock_path).exists:
-        fail(
-            "pnpm import did not generate '{}' from {}".format(
-                pnpm_lock_path,
-                rctx.attr.yarn_lock,
-            ),
-        )
-
-    pnpm_lock_contents = rctx.read(pnpm_lock_path)
-    if not pnpm_lock_contents.strip() or "lockfileVersion:" not in pnpm_lock_contents:
-        fail("generated '{}' is not a valid non-empty pnpm lockfile".format(pnpm_lock_path))
-
-    _execute(
+    rctx.report_progress("Resolving Yarn graph and fetching verified cache archives")
+    export_result = _execute(
         rctx,
         host_node,
+        source_format,
         [
             host_node,
-            rctx.path(_LOCK_VERIFY_FILENAME),
-            rctx.path(pnpm_lock_path),
-            expected_sha256,
+            yarn_path,
+            "rules-js",
+            "export-lock",
+            "--output",
+            rctx.path(paths.join(lock_directory, _GRAPH_FILENAME)),
+            "--archives",
+            rctx.path(paths.join(lock_directory, "archives")),
+            "--expected-graph-sha256",
+            rctx.attr.expected_graph_sha256,
+            "--repository-root",
+            rctx.path("."),
+            "--source-format",
+            source_format,
+            "--source-package",
+            lock_directory if lock_directory else ".",
+            "--exporter-yarn-version",
+            yarn_version,
         ],
-        "generated pnpm lock checksum verification",
-        repository_root,
+        project_root,
     )
+    if export_result.return_code:
+        _cleanup_repository_outputs(rctx, cleanup_paths)
+        _fail_execution(export_result, "native Yarn graph export")
 
-    build_path = paths.join(lock_directory, _BUILD_FILENAME)
+    graph_path = paths.join(lock_directory, _GRAPH_FILENAME)
+    if not rctx.path(graph_path).exists:
+        _cleanup_repository_outputs(rctx, cleanup_paths)
+        fail("native Yarn graph exporter did not generate '{}'".format(graph_path))
+    graph_contents = rctx.read(graph_path)
+    if not graph_contents.strip() or '"schema_version": 1' not in graph_contents:
+        _cleanup_repository_outputs(rctx, cleanup_paths)
+        fail("generated '{}' is not a valid non-empty schema-v1 graph".format(_GRAPH_FILENAME))
+
+    _cleanup_repository_outputs(rctx, cleanup_paths)
+
     rctx.file(
-        build_path,
+        paths.join(lock_directory, _BUILD_FILENAME),
         """\
 package(default_visibility = ["//visibility:public"])
 
-exports_files(["{lockfile}"])
-""".format(lockfile = _PNPM_LOCK_FILENAME),
+exports_files(
+    ["{graph}"] +
+    glob(["archives/*.tgz"], allow_empty = True) +
+    glob(["archives/*.zip"], allow_empty = True) +
+    {licenses},
+)
+
+filegroup(
+    name = "archives",
+    srcs =
+        glob(["archives/*.tgz"], allow_empty = True) +
+        glob(["archives/*.zip"], allow_empty = True),
+)
+
+filegroup(
+    name = "licenses",
+    srcs = {licenses},
+)
+
+filegroup(
+    name = "unexpected_files",
+    srcs = glob(
+        ["**"],
+        allow_empty = True,
+        exclude = [
+            "BUILD.bazel",
+            "REPO.bazel",
+            "WORKSPACE",
+            "{graph}",
+            "archives/*.tgz",
+            "archives/*.zip",
+        ] + {licenses},
+    ),
+)
+""".format(
+            graph = _GRAPH_FILENAME,
+            licenses = repr(YARN_LICENSE_FILENAMES),
+        ),
     )
 
 yarn_lock_repository = repository_rule(
     implementation = _yarn_lock_repository_impl,
+    environ = _OPERATIONAL_ENVIRON,
     attrs = {
+        "_input_copy_helper": attr.label(
+            allow_single_file = True,
+            default = Label("//npm/private:yarn_lock_input_copy.mjs"),
+        ),
         "data": attr.label_list(
             allow_files = True,
-            doc = "Text inputs copied into the generated repository before pnpm import.",
+            doc = "All manifests, Yarn configuration, patches, and local files read by Yarn.",
         ),
-        "expected_pnpm_lock_sha256": attr.string(
-            doc = "Expected lowercase SHA-256 of the generated pnpm-lock.yaml. Empty values fail after reporting the digest to pin.",
+        "expected_graph_sha256": attr.string(
+            doc = "Independently reviewed SHA-256 of canonical yarn_graph.json bytes.",
+        ),
+        "binary_data": attr.label_list(
+            allow_files = True,
+            doc = "Binary local archives copied byte-for-byte into the generated repository.",
+        ),
+        "exporter": attr.label(
+            allow_single_file = True,
+            default = Label("//npm/private:yarn_lock_exporter.cjs"),
+            doc = "Local runtime Yarn plugin that emits the normalized graph.",
         ),
         "node_toolchain_prefix": attr.string(
             default = "nodejs",
             doc = "Prefix of the registered rules_nodejs host toolchain repositories.",
         ),
-        "preupdate": attr.label_list(
-            allow_files = True,
-            doc = "Node.js scripts run from the generated repository root before pnpm import.",
-        ),
         "quiet": attr.bool(
             default = True,
-            doc = "Suppress successful preprocessing and pnpm import output.",
-        ),
-        "use_pnpm": attr.label(
-            allow_single_file = True,
-            mandatory = True,
-            doc = "Pinned pnpm.cjs entry point used to import the Yarn lockfile.",
+            doc = "Suppress successful Yarn output.",
         ),
         "yarn_lock": attr.label(
             allow_single_file = True,
             mandatory = True,
             doc = "Source yarn.lock file.",
         ),
+        "yarn_sha256": attr.string(
+            doc = "Optional assertion that must equal the reviewed official yarn.js SHA-256.",
+        ),
+        "yarn_version": attr.string(
+            default = "4.5.0",
+            doc = "Exact reviewed official Yarn runtime version.",
+        ),
     },
     doc = """\
-Generates pnpm-lock.yaml from yarn.lock entirely inside Bazel's external repository cache.
+Uses an exact pinned official yarn.js and a local runtime plugin to resolve a Yarn lockfile
+without pnpm, linking, lifecycle scripts, Corepack, or writes to the source workspace.
 
-All files read by pnpm import must be declared through data or preupdate. The rule copies
-those inputs instead of symlinking them, so their ordinary relative writes stay in the
-generated repository. Preprocessing scripts are trusted repository code and must not write
-to absolute source paths. The generated lockfile is exported from the Bazel package
-containing yarn.lock.
+The generated repository exports yarn_graph.json and the checksum-verified Yarn cache zip
+for every reachable third-party locator. All project inputs must be declared through data
+or binary_data.
 """,
 )

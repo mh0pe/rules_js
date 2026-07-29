@@ -11,6 +11,16 @@ js_library(
     visibility = ["//visibility:public"],
 )
 
+js_library(
+    name = "yarn_lock_input_copy",
+    srcs = ["yarn_lock_input_copy.mjs"],
+)
+
+js_library(
+    name = "yarn_lock_exporter_module",
+    srcs = ["yarn_lock_exporter.cjs"],
+)
+
 bzl_library(
     name = "npm_package",
     srcs = ["npm_package.bzl"],
@@ -113,6 +123,7 @@ bzl_library(
         ":npm_translate_lock_generate",
         ":npmrc",
         ":utils",
+        ":yarn_graph",
         "@bazel_lib//lib:base64",
         "@bazel_lib//lib:repo_utils",
         "@bazel_skylib//lib:dicts",
@@ -214,13 +225,30 @@ bzl_library(
 )
 
 bzl_library(
+    name = "yarn_graph",
+    srcs = ["yarn_graph.bzl"],
+    visibility = ["//npm:__subpackages__"],
+    deps = [
+        ":utils",
+        "@bazel_skylib//lib:paths",
+    ],
+)
+
+bzl_library(
     name = "yarn_lock_repository",
     srcs = ["yarn_lock_repository.bzl"],
     visibility = ["//npm:__subpackages__"],
     deps = [
+        ":yarn_tool_repository",
         "@bazel_lib//lib:repo_utils",
         "@bazel_skylib//lib:paths",
     ],
+)
+
+bzl_library(
+    name = "yarn_tool_repository",
+    srcs = ["yarn_tool_repository.bzl"],
+    visibility = ["//npm:__subpackages__"],
 )
 
 bzl_library(

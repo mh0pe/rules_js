@@ -12,6 +12,7 @@ load(":pnpm_test.bzl", "pnpm_tests")
 load(":transitive_closure_tests.bzl", "transitive_closure_tests")
 load(":translate_lock_helpers_tests.bzl", "translate_lock_helpers_tests")
 load(":utils_tests.bzl", "utils_tests")
+load(":yarn_graph_tests.bzl", "yarn_graph_tests")
 load(":yarn_lock_extension_test.bzl", "yarn_lock_extension_tests")
 
 npm_link_all_packages()
@@ -24,6 +25,26 @@ npmrc_tests(name = "test_npmrc")
 pnpm_tests(name = "test_pnpm")
 
 yarn_lock_extension_tests(name = "test_yarn_lock_extension")
+
+yarn_graph_tests(name = "test_yarn_graph")
+
+js_test(
+    name = "yarn_lock_exporter_policy_test",
+    data = ["//npm/private:yarn_lock_exporter_module"],
+    entry_point = "yarn_lock_exporter_policy_test.cjs",
+)
+
+js_test(
+    name = "yarn_lock_classic_validation_test",
+    data = ["//npm/private:yarn_lock_exporter_module"],
+    entry_point = "yarn_lock_classic_validation_test.cjs",
+)
+
+js_test(
+    name = "yarn_lock_input_copy_test",
+    data = ["//npm/private:yarn_lock_input_copy"],
+    entry_point = "yarn_lock_input_copy_test.mjs",
+)
 
 transitive_closure_tests(name = "test_transitive_closure")
 

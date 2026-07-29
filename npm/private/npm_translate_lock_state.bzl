@@ -9,6 +9,7 @@ load(":npmrc.bzl", "parse_npmrc")
 load(":pnpm.bzl", "pnpm")
 load(":transitive_closure.bzl", "calculate_transitive_closures")
 load(":utils.bzl", "INTERNAL_ERROR_MSG", "utils")
+load(":yarn_graph.bzl", "yarn_graph")
 
 NPM_RC_FILENAME = ".npmrc"
 PACKAGE_JSON_FILENAME = "package.json"
@@ -38,15 +39,22 @@ WARNING: `update_pnpm_lock` attribute in `npm_translate_lock(name = "{rctx_name}
         # labels only needed when updating the pnpm lock file
         _init_update_labels(priv, rctx, attr)
 
-    # parse the pnpm lock file incase since we need the importers list for additional init
-    if attr.pnpm_lock and rctx.path(attr.pnpm_lock).exists:
+    # Parse the active dependency graph since later initialization depends on
+    # the importer list.
+    if attr.yarn_graph:
+        _load_yarn_graph(priv, rctx, attr)
+    elif attr.pnpm_lock and rctx.path(attr.pnpm_lock).exists:
         rctx.report_progress("Translating {}".format(attr.pnpm_lock))
 
         _load_lockfile(priv, rctx, attr, rctx.path(attr.pnpm_lock), is_windows)
 
     # May depend on lockfile state
-    _init_root_package(priv)
-    _init_workspace(priv, rctx, is_windows)
+    _init_root_package(priv, attr)
+    if attr.yarn_graph:
+        priv["pnpm_settings"] = {}
+        priv["only_built_dependencies"] = None
+    else:
+        _init_workspace(priv, rctx, is_windows)
 
     _init_npmrc(priv, rctx, attr)
 
@@ -56,21 +64,35 @@ WARNING: `update_pnpm_lock` attribute in `npm_translate_lock(name = "{rctx_name}
 
 ################################################################################
 def _validate_attrs(attr, is_windows):
-    if is_windows and not attr.pnpm_lock:
+    if attr.yarn_graph and (attr.pnpm_lock or attr.npm_package_lock or attr.yarn_lock):
+        fail("yarn_graph is mutually exclusive with pnpm_lock, npm_package_lock, and yarn_lock")
+    if attr.yarn_graph and attr.update_pnpm_lock:
+        fail("yarn_graph is incompatible with update_pnpm_lock")
+    if attr.yarn_graph and attr.preupdate:
+        fail("yarn_graph is incompatible with preupdate")
+    if attr.yarn_graph and attr.patches and not attr.patches_base:
+        fail("patches_base is required when yarn_graph and patches are both set")
+    if is_windows and not attr.pnpm_lock and not attr.yarn_graph:
         fail("pnpm_lock must be set on Windows")
-    if not attr.pnpm_lock and not attr.npm_package_lock and not attr.yarn_lock:
-        fail("at least one of pnpm_lock, npm_package_lock or yarn_lock must be set")
+    if not attr.pnpm_lock and not attr.npm_package_lock and not attr.yarn_lock and not attr.yarn_graph:
+        fail("at least one of pnpm_lock, npm_package_lock, yarn_lock, or yarn_graph must be set")
     if attr.npm_package_lock and attr.yarn_lock:
         fail("only one of npm_package_lock or yarn_lock may be set")
 
 ################################################################################
 def _init_common_labels(priv, rctx, attr):
     # lock files
-    if attr.pnpm_lock:
+    if attr.yarn_graph:
+        rctx.watch(attr.yarn_graph)
+        priv["pnpm_lock_label"] = attr.yarn_graph
+        priv["lock_label"] = attr.yarn_graph
+    elif attr.pnpm_lock:
         rctx.watch(attr.pnpm_lock)
         priv["pnpm_lock_label"] = attr.pnpm_lock
+        priv["lock_label"] = attr.pnpm_lock
     elif attr.npm_package_lock or attr.yarn_lock:
         priv["pnpm_lock_label"] = (attr.npm_package_lock or attr.yarn_lock).same_package_label("pnpm-lock.yaml")
+        priv["lock_label"] = priv["pnpm_lock_label"]
 
     priv["pnpm_root_package_json"] = priv["pnpm_lock_label"].same_package_label(PACKAGE_JSON_FILENAME)
 
@@ -115,14 +137,14 @@ def _init_external_repository_action_cache(priv, attr):
     priv["external_repository_action_cache"] = attr.external_repository_action_cache if attr.external_repository_action_cache else utils.default_external_repository_action_cache()
 
 ################################################################################
-def _init_root_package(priv):
+def _init_root_package(priv, attr):
     pnpm_lock_label = priv["pnpm_lock_label"]
 
     # Don't allow a pnpm lock file that isn't in the root directory of a bazel package
     if paths.dirname(pnpm_lock_label.name):
         msg = "expected pnpm lock file {} to be at the root of a bazel package".format(pnpm_lock_label)
         fail(msg)
-    priv["root_package"] = pnpm_lock_label.package
+    priv["root_package"] = attr.root_package if attr.root_package else pnpm_lock_label.package
 
 ################################################################################
 def _init_workspace(priv, rctx, is_windows):
@@ -169,7 +191,7 @@ def _init_npmrc(priv, rctx, attr):
     if attr.npmrc:
         _load_npmrc(priv, rctx, attr, rctx.path(attr.npmrc), attr.npmrc)
     else:
-        npmrc_label = attr.pnpm_lock or attr.npm_package_lock or attr.yarn_lock
+        npmrc_label = attr.pnpm_lock or attr.npm_package_lock or attr.yarn_lock or attr.yarn_graph
         if npmrc_label:
             npmrc_label = npmrc_label.same_package_label(NPM_RC_FILENAME)
 
@@ -448,6 +470,21 @@ def _load_lockfile(priv, rctx, attr, pnpm_lock_path, is_windows):
             fail(msg)
 
 ################################################################################
+def _load_yarn_graph(priv, rctx, attr):
+    graph_content = rctx.read(attr.yarn_graph)
+    importers, packages, graph_parse_err = yarn_graph.parse_json(
+        graph_content,
+        attr.yarn_graph,
+    )
+    if graph_parse_err != None:
+        fail(graph_parse_err)
+
+    calculate_transitive_closures(packages)
+    priv["importers"] = importers
+    priv["packages"] = packages
+    priv["pnpm_patched_dependencies"] = {}
+
+################################################################################
 def _has_workspaces(priv):
     importer_paths = priv["importers"].keys()
     return importer_paths and (len(importer_paths) > 1 or importer_paths[0] != ".")
@@ -508,12 +545,15 @@ def _new(rctx, mod, attr):
         "default_registry": utils.default_registry(),
         "external_repository_action_cache": None,
         "importers": {},
+        "is_yarn_graph": bool(attr.yarn_graph),
         "input_hashes": {},
         "npm_auth": {},
         "npm_registries": {},
         "only_built_dependencies": None,
         "packages": {},
         "root_package": "",
+        "lock_label": None,
+        "link_workspace": attr.link_workspace,
         "pnpm_settings": {},
         "pnpm_patched_dependencies": {},
         "should_update_pnpm_lock": should_update_pnpm_lock,
@@ -528,6 +568,7 @@ def _new(rctx, mod, attr):
         pnpm_lock_label = lambda: priv["pnpm_lock_label"],
         should_update_pnpm_lock = lambda: _should_update_pnpm_lock(priv),
         default_registry = lambda: priv["default_registry"],
+        is_yarn_graph = lambda: priv["is_yarn_graph"],
         importers = lambda: priv["importers"],
         packages = lambda: priv["packages"],
         pnpm_patches = lambda: [_patch_path_for(priv, name) for name in priv["pnpm_patched_dependencies"]],
@@ -536,6 +577,8 @@ def _new(rctx, mod, attr):
         npm_registries = lambda: priv["npm_registries"],
         npm_auth = lambda: priv["npm_auth"],
         root_package = lambda: priv["root_package"],
+        lock_label = lambda: priv["lock_label"],
+        link_workspace = lambda: priv["link_workspace"],
         set_input_hash = lambda label, value: _set_input_hash(priv, label, value),
         action_cache_miss = lambda: _action_cache_miss(priv, rctx),
         write_action_cache = lambda: _write_action_cache(priv, rctx),

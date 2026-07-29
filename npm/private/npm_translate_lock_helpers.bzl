@@ -268,6 +268,18 @@ def _select_npm_auth(url, npm_auth):
     return npm_auth_bearer, npm_auth_basic, npm_auth_username, npm_auth_password
 
 ################################################################################
+def _resolve_patch_label(attr, patch):
+    if attr.patches_base:
+        return attr.patches_base.relative(patch)
+    if attr.pnpm_lock:
+        return attr.pnpm_lock.relative(patch)
+    if attr.yarn_lock:
+        return attr.yarn_lock.relative(patch)
+    if attr.npm_package_lock:
+        return attr.npm_package_lock.relative(patch)
+    fail("patch labels require patches_base when no source lockfile can provide a label base")
+
+################################################################################
 def _lifecycle_attrs(attr):
     """Convert lifecycle-related extension tag attrs into values to pass to npm_import"""
     if not attr.run_lifecycle_hooks:
@@ -348,7 +360,7 @@ def _get_npm_imports(state, replace_packages, attr, registries, npm_auth, exclud
         resolution = package_info["resolution"]
 
         resolution_type = resolution.get("type", None)
-        if resolution_type == "directory":
+        if resolution_type in ["directory", "virtual-directory"]:
             # this package is treated as a first-party dep
             continue
 
@@ -357,11 +369,25 @@ def _get_npm_imports(state, replace_packages, attr, registries, npm_auth, exclud
         registry = resolution.get("registry", None)
         repo = resolution.get("repo", None)
         commit = resolution.get("commit", None)
+        archive = resolution.get("archive", None)
+        archive_sha256 = resolution.get("archive_sha256", None)
+        yarn_checksum = resolution.get("yarn_checksum", None)
+        is_yarn_resolution = resolution_type in ["yarn-cache", "yarn-classic-tarball"]
 
         if resolution_type == "git":
             if not repo or not commit:
                 msg = "expected package {} resolution to have repo and commit fields when resolution type is git".format(package_key)
                 fail(msg)
+        elif resolution_type == "yarn-cache":
+            if type(archive) != "Label" or not archive_sha256 or not yarn_checksum:
+                fail("expected package {} Yarn cache resolution to have archive Label, archive_sha256, and yarn_checksum fields".format(package_key))
+            if integrity or tarball or registry or repo or commit:
+                fail("expected package {} Yarn cache resolution to omit integrity, tarball, registry, repo, and commit fields".format(package_key))
+        elif resolution_type == "yarn-classic-tarball":
+            if type(archive) != "Label" or not archive_sha256 or not integrity or yarn_checksum:
+                fail("expected package {} Yarn Classic resolution to have archive Label, archive_sha256, and integrity fields, and no yarn_checksum".format(package_key))
+            if tarball or registry or repo or commit:
+                fail("expected package {} Yarn Classic resolution to omit tarball, registry, repo, and commit fields".format(package_key))
         elif not integrity and not tarball:
             msg = "expected package {} resolution to have an integrity or tarball field but found none".format(package_key)
             fail(msg)
@@ -403,7 +429,10 @@ ERROR: can not apply both `pnpm.patchedDependencies` and `npm_translate_lock(pat
 
         # Resolve string patch labels relative to the root respository rather than relative to rules_js.
         # https://docs.google.com/document/d/1N81qfCa8oskCk5LqTW-LNthy6EBrDot7bdUsjz6JFC4/
-        patches = [attr.pnpm_lock.relative(patch) for patch in patches]
+        if pnpm_patched:
+            patches = [attr.pnpm_lock.relative(patch) for patch in patches]
+        else:
+            patches = [_resolve_patch_label(attr, patch) for patch in patches]
 
         exclude_package_contents_result = _gather_package_content_excludes(exclude_package_contents_config, name, friendly_name, unfriendly_name)
 
@@ -436,7 +465,12 @@ ERROR: can not apply both `pnpm.patchedDependencies` and `npm_translate_lock(pat
             elif name not in link_packages[public_hoist_package]:
                 link_packages[public_hoist_package].append(name)
 
-        run_lifecycle_hooks = all_lifecycle_hooks and only_built_dependencies != None and name in only_built_dependencies
+        requires_build = package_info.get("requires_build", False)
+        run_lifecycle_hooks = (
+            all_lifecycle_hooks and
+            package_info.get("lifecycle_scripts_enabled", True) and
+            (name in only_built_dependencies if only_built_dependencies != None else requires_build)
+        )
         if run_lifecycle_hooks:
             lifecycle_hooks, _ = _gather_values_from_matching_names(False, all_lifecycle_hooks, "*", name, friendly_name, unfriendly_name)
             lifecycle_hooks_env, _ = _gather_values_from_matching_names(True, attr.lifecycle_hooks_envs, "*", name, friendly_name, unfriendly_name)
@@ -448,7 +482,7 @@ ERROR: can not apply both `pnpm.patchedDependencies` and `npm_translate_lock(pat
             lifecycle_hooks_execution_requirements = []
             lifecycle_hooks_use_default_shell_env = False
 
-        bins = {}
+        bins = dict(package_info.get("bins", {})) if is_yarn_resolution else {}
         matching_bins, _ = _gather_values_from_matching_names(False, attr.bins, "*", name, friendly_name, unfriendly_name)
         for bin in matching_bins:
             key_value = bin.split("=", 1)
@@ -458,7 +492,9 @@ ERROR: can not apply both `pnpm.patchedDependencies` and `npm_translate_lock(pat
                 msg = "bins contains invalid key value pair '{}', required '=' separator not found".format(bin)
                 fail(msg)
 
-        if resolution_type == "git":
+        if is_yarn_resolution:
+            url = ""
+        elif resolution_type == "git":
             url = repo
         elif tarball:
             if _is_url(tarball):
@@ -481,11 +517,16 @@ ERROR: can not apply both `pnpm.patchedDependencies` and `npm_translate_lock(pat
         else:
             url = utils.npm_registry_download_url(name, friendly_version, registries, default_registry)
 
-        npm_auth_bearer, npm_auth_basic, npm_auth_username, npm_auth_password = _select_npm_auth(url, npm_auth)
+        if is_yarn_resolution:
+            npm_auth_bearer, npm_auth_basic, npm_auth_username, npm_auth_password = (None, None, None, None)
+        else:
+            npm_auth_bearer, npm_auth_basic, npm_auth_username, npm_auth_password = _select_npm_auth(url, npm_auth)
 
         deps_oss, deps_cpus = _collect_dep_constraints(packages, package_info)
 
         result_pkg = struct(
+            archive = archive,
+            archive_sha256 = archive_sha256,
             custom_postinstall = custom_postinstall,
             deps = package_info["dependencies"] | package_info["optional_dependencies"],
             deps_oss = deps_oss,
@@ -510,8 +551,12 @@ ERROR: can not apply both `pnpm.patchedDependencies` and `npm_translate_lock(pat
             npm_auth_basic = npm_auth_basic,
             npm_auth_username = npm_auth_username,
             npm_auth_password = npm_auth_password,
+            node_toolchain_prefix = attr.node_toolchain_prefix,
             transitive_closure = transitive_closure if len(transitive_closure) else None,
             url = url,
+            yarn_checksum = yarn_checksum,
+            yarn_conditions = package_info.get("conditions", {}),
+            yarn_metadata = json.encode(package_info.get("yarn_metadata", {})) if is_yarn_resolution else "",
             commit = commit,
             version = version,
             bins = bins,
@@ -642,6 +687,9 @@ def _normalize_bazelignore(lines):
 
 ################################################################################
 def _verify_lifecycle_hooks_specified(state):
+    if state.is_yarn_graph():
+        return
+
     if state.only_built_dependencies() == None:
         msg = """\
 ERROR: pnpm 'allowBuilds' (or 'onlyBuiltDependencies' in pnpm < 10.26) configuration required.
@@ -678,7 +726,7 @@ def _verify_patches(rctx, attr, state):
         # Patches in `npm_translate_lock(patches)`
         for patches in attr.patches.values():
             for patch in patches:
-                patch_label = attr.pnpm_lock.relative(patch)
+                patch_label = _resolve_patch_label(attr, patch)
                 sets.insert(declared_patches, paths.join(patch_label.package, patch_label.name))
 
         if not sets.is_subset(verify_patches, declared_patches):
@@ -701,6 +749,7 @@ helpers = struct(
     get_npm_auth = _get_npm_auth,
     get_npm_imports = _get_npm_imports,
     link_package = _link_package,
+    resolve_patch_label = _resolve_patch_label,
     to_apparent_repo_name = _to_apparent_repo_name,
     verify_node_modules_ignored = _verify_node_modules_ignored,
     verify_lifecycle_hooks_specified = _verify_lifecycle_hooks_specified,

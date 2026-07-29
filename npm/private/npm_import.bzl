@@ -456,11 +456,15 @@ bzl_library(
 )"""
 
 _TARBALL_FILENAME = "package.tgz"
+_YARN_ARCHIVE_FILENAME = "package.zip"
+_YARN_ARCHIVE_COPY_HELPER = ".aspect_rules_js_copy_yarn_archive.mjs"
 _EXTRACT_TO_DIRNAME = "package"
 _EXTRACT_TO_PACKAGE_JSON = "{}/package.json".format(_EXTRACT_TO_DIRNAME)
 _EXTRACT_TO_RULES_JS_METADATA = "{}/aspect_rules_js_metadata.json".format(_EXTRACT_TO_DIRNAME)
 _DEFS_BZL_FILENAME = "defs.bzl"
 _PACKAGE_JSON_BZL_FILENAME = "package_json.bzl"
+_YARN_CONDITIONS_FILENAME = "yarn_conditions.json"
+_YARN_METADATA_FILENAME = "yarn_metadata.json"
 
 def _fetch_git_repository(rctx):
     # Adapted from git_repo helper function used by git_repository in @bazel_tools//tools/build_defs/repo:git_worker.bzl:
@@ -586,6 +590,99 @@ def _download_and_extract_archive(rctx, package_json_only):
             msg = "Failed to set directory listing permissions. '{}' exited with {}: \nSTDOUT:\n{}\nSTDERR:\n{}".format(" ".join([str(a) for a in chmod_args]), result.return_code, result.stdout, result.stderr)
             fail(msg)
 
+def _extract_yarn_archive(rctx):
+    if not rctx.attr.archive:
+        fail("'archive' is required for a Yarn archive")
+    if len(rctx.attr.archive_sha256) != 64 or any([
+        character not in "0123456789abcdef"
+        for character in rctx.attr.archive_sha256.elems()
+    ]):
+        fail("'archive_sha256' must be 64 lowercase hexadecimal characters")
+    is_classic = bool(rctx.attr.integrity)
+    if is_classic:
+        if rctx.attr.yarn_checksum:
+            fail("'yarn_checksum' must be empty for a Yarn Classic tarball")
+    elif not rctx.attr.yarn_checksum:
+        fail("'yarn_checksum' is required for a Yarn Berry cache archive")
+    if rctx.attr.url or rctx.attr.commit:
+        fail("'archive' is mutually exclusive with 'url' and 'commit'")
+    if rctx.attr.exclude_package_contents:
+        fail("'exclude_package_contents' is not supported with Yarn archives")
+
+    archive_filename = _TARBALL_FILENAME if is_classic else _YARN_ARCHIVE_FILENAME
+    rctx.file(
+        _YARN_ARCHIVE_COPY_HELPER,
+        """\
+import { createHash } from "node:crypto";
+import { createReadStream, createWriteStream, rmSync } from "node:fs";
+import { pipeline } from "node:stream/promises";
+
+const [sourcePath, destinationPath, expectedSha256, expectedIntegrity] =
+  process.argv.slice(2);
+const sha256 = createHash("sha256");
+let integrity = null;
+let expectedIntegrityDigest = null;
+if (expectedIntegrity) {
+  const match = /^(sha1|sha256|sha384|sha512)-([A-Za-z0-9+/]+={0,2})$/.exec(
+    expectedIntegrity,
+  );
+  if (!match)
+    throw new Error(`Yarn Classic archive integrity is not canonical SRI`);
+  integrity = createHash(match[1]);
+  expectedIntegrityDigest = match[2];
+}
+const source = createReadStream(sourcePath);
+source.on("data", chunk => {
+  sha256.update(chunk);
+  integrity?.update(chunk);
+});
+await pipeline(source, createWriteStream(destinationPath, {flags: "wx"}));
+const actualSha256 = sha256.digest("hex");
+if (actualSha256 !== expectedSha256) {
+  rmSync(destinationPath, {force: true});
+  throw new Error(
+    `Yarn archive SHA-256 mismatch: expected ${expectedSha256}, got ${actualSha256}`,
+  );
+}
+if (integrity) {
+  const actualIntegrityDigest = integrity.digest("base64");
+  if (actualIntegrityDigest !== expectedIntegrityDigest) {
+    rmSync(destinationPath, {force: true});
+    throw new Error(`Yarn Classic archive SRI mismatch`);
+  }
+}
+""",
+    )
+    host_node = rctx.path(Label("@{}_{}//:bin/node".format(
+        rctx.attr.node_toolchain_prefix,
+        repo_utils.platform(rctx),
+    )))
+    copy_result = rctx.execute([
+        host_node,
+        rctx.path(_YARN_ARCHIVE_COPY_HELPER),
+        rctx.path(rctx.attr.archive),
+        rctx.path(archive_filename),
+        rctx.attr.archive_sha256,
+        rctx.attr.integrity,
+    ])
+    if not rctx.delete(_YARN_ARCHIVE_COPY_HELPER):
+        fail("Failed to delete temporary Yarn archive copy helper")
+    if copy_result.return_code:
+        rctx.delete(archive_filename)
+        fail(
+            "Failed to copy and verify Yarn archive.\nSTDOUT:\n{}\nSTDERR:\n{}".format(
+                copy_result.stdout,
+                copy_result.stderr,
+            ),
+        )
+    rctx.extract(
+        archive = archive_filename,
+        output = _EXTRACT_TO_DIRNAME,
+        stripPrefix = "package" if is_classic else "node_modules/{}".format(rctx.attr.package),
+    )
+    if not rctx.delete(archive_filename):
+        fail("Failed to delete temporary Yarn import file '{}'".format(archive_filename))
+
 def _npm_import_rule_impl(rctx):
     has_lifecycle_hooks = bool(rctx.attr.lifecycle_hooks) or bool(rctx.attr.custom_postinstall)
     has_patches = bool(rctx.attr.patches)
@@ -593,7 +690,11 @@ def _npm_import_rule_impl(rctx):
     reproducible = False
     package_src = _EXTRACT_TO_DIRNAME
 
-    if rctx.attr.commit:
+    if rctx.attr.archive:
+        _extract_yarn_archive(rctx)
+    elif rctx.attr.archive_sha256 or rctx.attr.yarn_checksum:
+        fail("'archive_sha256' and 'yarn_checksum' require 'archive'")
+    elif rctx.attr.commit:
         _fetch_git_repository(rctx)
         reproducible = True
     elif rctx.attr.extract_full_archive or has_patches or has_lifecycle_hooks:
@@ -702,6 +803,23 @@ def _npm_import_rule_impl(rctx):
 
     if rules_js_metadata:
         rctx.file(_EXTRACT_TO_RULES_JS_METADATA, json.encode_indent(rules_js_metadata, indent = "  "))
+
+    if rctx.attr.yarn_conditions:
+        rctx.file(
+            _YARN_CONDITIONS_FILENAME,
+            json.encode_indent(rctx.attr.yarn_conditions, indent = "  ") + "\n",
+        )
+        rctx_files["BUILD.bazel"].append("""exports_files(["{}"])""".format(_YARN_CONDITIONS_FILENAME))
+
+    if rctx.attr.yarn_metadata:
+        yarn_metadata = json.decode(rctx.attr.yarn_metadata)
+        if type(yarn_metadata) != "dict":
+            fail("'yarn_metadata' must encode a JSON object")
+        rctx.file(
+            _YARN_METADATA_FILENAME,
+            json.encode_indent(yarn_metadata, indent = "  ") + "\n",
+        )
+        rctx_files["BUILD.bazel"].append("""exports_files(["{}"])""".format(_YARN_METADATA_FILENAME))
 
     for filename, contents in rctx_files.items():
         rctx.file(filename, "\n".join(contents))
@@ -1034,6 +1152,8 @@ _ATTRS_LINKS = _COMMON_ATTRS | {
 }
 
 _ATTRS = _COMMON_ATTRS | {
+    "archive": attr.label(allow_single_file = True),
+    "archive_sha256": attr.string(),
     "commit": attr.string(doc = "Specific commit to be checked out if url is a git repository."),
     "custom_postinstall": attr.string(doc = """
         Custom string postinstall script to run on the installed npm package.
@@ -1058,6 +1178,7 @@ _ATTRS = _COMMON_ATTRS | {
         It is optional to make development easier but should be set before shipping.
     """),
     "lifecycle_hooks": attr.string_list(doc = "List of lifecycle hook `package.json` scripts to run for this package if they exist."),
+    "node_toolchain_prefix": attr.string(default = "nodejs"),
     "npm_auth": attr.string(doc = "Auth token to authenticate with npm. When using Bearer authentication."),
     "npm_auth_basic": attr.string(doc = """
         Auth token to authenticate with npm. When using Basic authentication.
@@ -1073,6 +1194,9 @@ _ATTRS = _COMMON_ATTRS | {
         `-p1` will usually be needed for patches generated by git.
     """),
     "patches": attr.label_list(doc = "Patch files to apply onto the downloaded npm package."),
+    "yarn_checksum": attr.string(),
+    "yarn_conditions": attr.string_list_dict(),
+    "yarn_metadata": attr.string(),
     "url": attr.string(doc = """
         Optional url for this package. If unset, a default npm registry url is generated from
         the package name and version.
@@ -1257,7 +1381,13 @@ def npm_import(
         generate_package_json_bzl,
         extract_full_archive,
         exclude_package_contents,
-        exclude_package_contents_presets):
+        exclude_package_contents_presets,
+        archive = None,
+        archive_sha256 = "",
+        node_toolchain_prefix = "nodejs",
+        yarn_checksum = "",
+        yarn_conditions = {},
+        yarn_metadata = ""):
     # By convention, the `{name}` repository contains the actual npm
     # package sources downloaded from the registry and extracted
     npm_import_rule(
@@ -1267,6 +1397,9 @@ def npm_import(
         version = version,
         root_package = root_package,
         link_workspace = link_workspace,
+        node_toolchain_prefix = node_toolchain_prefix,
+        archive = archive,
+        archive_sha256 = archive_sha256,
         integrity = integrity,
         url = url,
         commit = commit,
@@ -1285,6 +1418,9 @@ def npm_import(
         extract_full_archive = extract_full_archive,
         exclude_package_contents = exclude_package_contents,
         exclude_package_contents_presets = exclude_package_contents_presets,
+        yarn_checksum = yarn_checksum,
+        yarn_conditions = yarn_conditions,
+        yarn_metadata = yarn_metadata,
     )
 
     has_custom_postinstall = bool(custom_postinstall)

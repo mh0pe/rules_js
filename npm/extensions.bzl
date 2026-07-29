@@ -36,8 +36,6 @@ load("//npm/private:npm_translate_lock_helpers.bzl", npm_translate_lock_helpers 
 load("//npm/private:npmrc.bzl", "parse_npmrc")
 load("//npm/private:pnpm_extension.bzl", "DEFAULT_PNPM_REPO_NAME", "resolve_pnpm_repositories")
 load("//npm/private:pnpm_repository.bzl", "pnpm_repository", _DEFAULT_PNPM_VERSION = "DEFAULT_PNPM_VERSION", _LATEST_PNPM_VERSION = "LATEST_PNPM_VERSION")
-load("//npm/private:tar.bzl", "detect_system_tar")
-load("//npm/private:transitive_closure.bzl", "translate_to_transitive_closure")
 load("//npm/private:yarn_lock_extension.bzl", "resolve_yarn_lock_repositories")
 load("//npm/private:yarn_lock_repository.bzl", "yarn_lock_repository")
 
@@ -173,13 +171,16 @@ WARNING: Cannot determine home directory in order to load home `.npmrc` file in 
         exclude_package_contents_config = exclude_package_contents_config,
     )
 
-    # attr.pnpm_lock.repo_name is a canonical repository name, so it needs to be qualified with an extra '@'.
-    link_workspace = "@" + attr.pnpm_lock.repo_name
+    # A generated graph repository contains provenance and archives, not the
+    # consumer workspace where node_modules links are created.
+    link_workspace = (state.link_workspace() or "@") if attr.yarn_graph else "@" + attr.pnpm_lock.repo_name
 
     for i in imports:
         npm_import(
             name = i.repo_name,
             key = i.package_key,
+            archive = i.archive,
+            archive_sha256 = i.archive_sha256,
             bins = i.bins,
             commit = i.commit,
             custom_postinstall = i.custom_postinstall,
@@ -196,6 +197,7 @@ WARNING: Cannot determine home directory in order to load home `.npmrc` file in 
             lifecycle_hooks_execution_requirements = i.lifecycle_hooks_execution_requirements,
             lifecycle_hooks_use_default_shell_env = i.lifecycle_hooks_use_default_shell_env,
             link_workspace = link_workspace,
+            node_toolchain_prefix = i.node_toolchain_prefix,
             npm_auth = i.npm_auth,
             npm_auth_basic = i.npm_auth_basic,
             npm_auth_password = i.npm_auth_password,
@@ -211,6 +213,9 @@ WARNING: Cannot determine home directory in order to load home `.npmrc` file in 
             root_package = state.root_package(),
             transitive_closure = i.transitive_closure,
             url = i.url,
+            yarn_checksum = i.yarn_checksum,
+            yarn_conditions = i.yarn_conditions,
+            yarn_metadata = i.yarn_metadata,
             version = i.version,
         )
 
@@ -433,35 +438,40 @@ def _yarn_lock_extension_impl(module_ctx):
     for attr in resolved.repositories:
         yarn_lock_repository(
             name = attr.name,
+            binary_data = attr.binary_data,
             data = attr.data,
-            expected_pnpm_lock_sha256 = attr.expected_pnpm_lock_sha256,
+            expected_graph_sha256 = attr.expected_graph_sha256,
             node_toolchain_prefix = attr.node_toolchain_prefix,
-            preupdate = attr.preupdate,
             quiet = attr.quiet,
-            use_pnpm = attr.use_pnpm,
+            supported_cpu = attr.supported_cpu,
+            supported_libc = attr.supported_libc,
+            supported_os = attr.supported_os,
             yarn_lock = attr.yarn_lock,
+            yarn_sha256 = attr.yarn_sha256,
+            yarn_version = attr.yarn_version,
         )
 
     return module_ctx.extension_metadata()
 
 yarn_lock = module_extension(
     doc = """\
-Generates a pnpm lockfile from a Yarn lockfile without writing to the source workspace.
-
-Configure the existing pnpm extension with an explicit version and integrity, then pass
-its pnpm.cjs label to generate.use_pnpm. The resulting repository exports pnpm-lock.yaml
-for consumption by npm.npm_translate_lock.
+Generates a normalized Yarn graph and verified cache archives without pnpm,
+Corepack, linking, lifecycle scripts, or writes to the source workspace.
 """,
     implementation = _yarn_lock_extension_impl,
     tag_classes = {
         "generate": tag_class(
             attrs = {
+                "binary_data": attr.label_list(
+                    allow_files = True,
+                    doc = "Binary local archives copied byte-for-byte into the generated repository.",
+                ),
                 "data": attr.label_list(
                     allow_files = True,
-                    doc = "Text inputs copied into the generated repository before pnpm import.",
+                    doc = "Text manifests, configuration, patches, and local files read by Yarn.",
                 ),
-                "expected_pnpm_lock_sha256": attr.string(
-                    doc = "Expected lowercase SHA-256 of the generated pnpm-lock.yaml. Omit once to discover the digest; unpinned output always fails.",
+                "expected_graph_sha256": attr.string(
+                    doc = "Independently reviewed SHA-256 of canonical yarn_graph.json bytes.",
                 ),
                 "name": attr.string(
                     mandatory = True,
@@ -471,23 +481,30 @@ for consumption by npm.npm_translate_lock.
                     default = "nodejs",
                     doc = "Prefix of the registered rules_nodejs host toolchain repositories.",
                 ),
-                "preupdate": attr.label_list(
-                    allow_files = True,
-                    doc = "Node.js scripts run from the generated repository root before pnpm import.",
-                ),
                 "quiet": attr.bool(
                     default = True,
-                    doc = "Suppress successful preprocessing and pnpm import output.",
+                    doc = "Suppress successful Yarn graph export output.",
                 ),
-                "use_pnpm": attr.label(
-                    allow_single_file = True,
-                    mandatory = True,
-                    doc = "Pinned pnpm.cjs entry point used to import the Yarn lockfile.",
+                "supported_cpu": attr.string_list(
+                    doc = "Bazel-only Yarn target CPUs; defaults to the source configuration.",
+                ),
+                "supported_libc": attr.string_list(
+                    doc = "Bazel-only Yarn target libc variants; defaults to the source configuration.",
+                ),
+                "supported_os": attr.string_list(
+                    doc = "Bazel-only Yarn target operating systems; defaults to the source configuration.",
+                ),
+                "yarn_sha256": attr.string(
+                    doc = "Optional assertion that must equal the reviewed official yarn.js SHA-256.",
                 ),
                 "yarn_lock": attr.label(
                     allow_single_file = True,
                     mandatory = True,
                     doc = "Source yarn.lock file.",
+                ),
+                "yarn_version": attr.string(
+                    default = "4.5.0",
+                    doc = "Exact official Yarn runtime version; independently pinned from packageManager.",
                 ),
             },
         ),
