@@ -130,70 +130,92 @@ adding new dependencies by running the pnpm tool in the source directory outside
 This results in updates to the `pnpm-lock.yaml` file, and then Bazel naturally finds those updates
 next time it reads the file.
 
-### Generate from yarn.lock without a checked-in pnpm lockfile
+### Generate directly from yarn.lock
 
-Bzlmod users whose source of truth is `yarn.lock` can generate the pnpm lockfile
-inside Bazel's external repository cache. This keeps a single checked-in
-lockfile while preserving the pnpm layout semantics consumed by
-`npm_translate_lock`.
+`rules_js` can use a checked-in `yarn.lock` without running pnpm or creating a
+`pnpm-lock.yaml`. The first repository phase runs the checksum-pinned official
+Yarn 4.5.0 bundle to produce a normalized `yarn_graph.json` plus verified
+archives. The second phase passes that graph to `npm_translate_lock`.
 
-First register an exact pnpm version and integrity:
-
-```starlark
-pnpm = use_extension("@aspect_rules_js//npm:extensions.bzl", "pnpm")
-pnpm.pnpm(
-    name = "pnpm-for-yarn-lock",
-    pnpm_version = "10.34.5",
-    pnpm_version_integrity = "sha512-...",
-)
-use_repo(pnpm, "pnpm-for-yarn-lock")
-```
-
-Then declare every text input read by `pnpm import`. Inputs and preprocessing
-scripts are copied into the generated repository, so their ordinary relative
-writes stay out of the source workspace. Preprocessing scripts are trusted
-repository code and must not write to absolute source paths:
+With Bzlmod:
 
 ```starlark
 yarn_lock = use_extension("@aspect_rules_js//npm:extensions.bzl", "yarn_lock")
 yarn_lock.generate(
-    name = "generated-pnpm-lock",
+    name = "generated-yarn-graph",
     data = [
+        "//:.yarnrc.yml",
         "//:package.json",
-        "//:pnpm-workspace.yaml",
         "//packages/example:package.json",
     ],
-    expected_pnpm_lock_sha256 = "<64 lowercase hex characters>",
-    preupdate = ["//tools:prepare-pnpm-import.mjs"],
-    use_pnpm = "@pnpm-for-yarn-lock//:package/bin/pnpm.cjs",
+    # Use binary_data for declared binary local archives.
+    binary_data = ["//vendor:example.tgz"],
+    expected_graph_sha256 = "<64 lowercase hex characters>",
     yarn_lock = "//:yarn.lock",
+    yarn_version = "4.5.0",
 )
-use_repo(yarn_lock, "generated-pnpm-lock")
-```
+use_repo(yarn_lock, "generated-yarn-graph")
 
-Finally pass the generated label to the normal npm extension:
-
-```starlark
 npm = use_extension("@aspect_rules_js//npm:extensions.bzl", "npm")
 npm.npm_translate_lock(
     name = "npm",
-    pnpm_lock = "@generated-pnpm-lock//:pnpm-lock.yaml",
+    yarn_graph = "@generated-yarn-graph//:yarn_graph.json",
 )
 use_repo(npm, "npm")
 ```
 
-The generated repository is invalidated whenever a declared input, preprocessing
-script, or pinned pnpm entry point changes. A file omitted from `data` is
-intentionally invisible to `pnpm import`. Only the root module may register
-generated repositories, preventing dependency modules from claiming names in
-the root repository namespace.
+The equivalent WORKSPACE setup is:
 
-`pnpm import` can consult package registries even when `yarn.lock` contains
-integrities. The rule removes ambient npm/pnpm configuration, runs with isolated
-user configuration directories, and refuses to export the result unless its
-SHA-256 matches `expected_pnpm_lock_sha256`. For initial setup, omit that
-attribute once: the fetch fails after printing the digest to pin. Add the
-reported digest and rerun.
+```starlark
+load(
+    "@aspect_rules_js//npm:repositories.bzl",
+    "npm_translate_lock",
+    "yarn_lock_repository",
+)
+
+yarn_lock_repository(
+    name = "generated-yarn-graph",
+    data = [
+        "//:.yarnrc.yml",
+        "//:package.json",
+        "//packages/example:package.json",
+    ],
+    binary_data = ["//vendor:example.tgz"],
+    expected_graph_sha256 = "<64 lowercase hex characters>",
+    yarn_lock = "//:yarn.lock",
+    yarn_version = "4.5.0",
+)
+
+npm_translate_lock(
+    name = "npm",
+    yarn_graph = "@generated-yarn-graph//:yarn_graph.json",
+)
+```
+
+The producer supports Yarn Classic v1 and Berry lock metadata versions 4, 6,
+and 8. It does not invoke Corepack, pnpm, `yarn install`, a Yarn linker, or
+package lifecycle scripts. Text inputs in `data` and byte-for-byte copied
+`binary_data` inputs are materialized in the generated repository; binary
+source symlinks are rejected and the copy is SHA-256 checked before export.
+Absolute or escaping local inputs and executable Git or `exec:` fetch locators
+are rejected.
+
+The generated graph and each archive are independently verified. Berry packages
+retain their native Yarn cache checksum. Classic packages retain canonical SRI
+and are fetched over credential-free HTTPS with strict redirects, proxy policy,
+and tar validation. Classic selective resolutions are rejected because their
+path-specific provenance is not represented yet.
+
+For initial setup, omit `expected_graph_sha256` once. Export writes the canonical
+graph for review, prints its SHA-256, and refuses to let the unpinned repository
+be consumed. Add the reviewed digest and rerun.
+
+Yarn configuration is graph provenance, not linker emulation. In particular,
+the pinned Yarn 4.5.0 pnpm linker has a fixed project-local
+`node_modules/.store`; `pnpmStoreFolder` is unsupported. Accepting
+`nodeLinker: pnp`, `node-modules`, or `pnpm` records validated metadata only.
+`rules_js` still materializes its own Bazel `node_modules` model and does not
+reproduce Yarn's PnP loader or Yarn's node-modules/pnpm linker layouts.
 
 ### update_pnpm_lock
 
