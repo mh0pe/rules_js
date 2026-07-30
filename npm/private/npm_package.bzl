@@ -91,6 +91,9 @@ def _npm_package_impl(ctx):
             files = depset([dst]),
         ),
         NpmPackageInfo(
+            archive_format = "",
+            archive_root = "",
+            archive_strip_components = 0,
             package = ctx.attr.package,
             version = ctx.attr.version,
             src = dst,

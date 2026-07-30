@@ -160,6 +160,15 @@ def _graph(
         "source_format": source_format,
     }
 
+def _rename_only_package(graph, name):
+    package = graph["packages"].pop(_PACKAGE_KEY)
+    package["name"] = name
+    package["resolution"]["locator"] = "{}@npm:1.3.0".format(name)
+    package_key = "{}@{}".format(name, _PACKAGE_VERSION)
+    graph["packages"][package_key] = package
+    graph["importers"]["."]["dependencies"] = {name: _PACKAGE_VERSION}
+    return package_key
+
 def _reachability_package(
         graph,
         name,
@@ -207,6 +216,26 @@ def _valid_berry_graph_test_impl(ctx):
                 packages[_PACKAGE_KEY]["resolution"]["archive"],
             )
             asserts.equals(env, _PACKAGE_KEY, importers["."]["dependencies"][_PACKAGE_NAME])
+
+    for legacy_name in ["Legacy_Name.v1", "@Legacy-Scope/Name_1"]:
+        legacy_graph = _graph("berry-v8")
+        legacy_key = _rename_only_package(legacy_graph, legacy_name)
+        _, packages, error = yarn_graph.parse_json(
+            json.encode(legacy_graph),
+            _GRAPH_LABEL,
+        )
+        archive_root = "node_modules/{}".format(legacy_name)
+        asserts.equals(env, None, error)
+        asserts.equals(
+            env,
+            archive_root,
+            packages[legacy_key]["resolution"]["archive_root"],
+        )
+        asserts.equals(
+            env,
+            len(archive_root.split("/")),
+            packages[legacy_key]["resolution"]["archive_strip_components"],
+        )
     return unittest.end(env)
 
 def _conditions_and_dependency_filtering_test_impl(ctx):
@@ -614,6 +643,36 @@ def yarn_graph_tests(name):
         "resolution.archive escapes the graph repository",
     )
     tests.append(":" + unsafe_archive)
+
+    unsafe_package_names = {
+        "backslash": "bad\\name",
+        "extra_slash": "extra/name",
+        "glob_bracket": "glob[name",
+        "glob_question": "glob?name",
+        "glob_star": "glob*name",
+        "scoped_extra_slash": "@scope/name/extra",
+        "traversal": "../escape",
+    }
+    for suffix, unsafe_package_name in unsafe_package_names.items():
+        unsafe_package_name_graph = _graph("berry-v8")
+        _rename_only_package(unsafe_package_name_graph, unsafe_package_name)
+        unsafe_package_name_test = name + "_unsafe_package_name_{}_test".format(suffix)
+        _failure_case(
+            unsafe_package_name_test,
+            json.encode(unsafe_package_name_graph),
+            "must be a safe canonical unscoped or @scope/name package name",
+        )
+        tests.append(":" + unsafe_package_name_test)
+
+    empty_package_name_graph = _graph("berry-v8")
+    _rename_only_package(empty_package_name_graph, "")
+    empty_package_name = name + "_empty_package_name_test"
+    _failure_case(
+        empty_package_name,
+        json.encode(empty_package_name_graph),
+        "to be a non-empty string",
+    )
+    tests.append(":" + empty_package_name)
 
     unknown_reference_graph = _graph("classic-v1")
     unknown_reference_graph["importers"]["."]["dependencies"][_PACKAGE_NAME] = "9.9.9"

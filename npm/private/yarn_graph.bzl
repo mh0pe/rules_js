@@ -564,6 +564,30 @@ def _safe_archive_path(value, path, extension):
         fail("Yarn graph parse error: {} must name exactly archives/<file>{}".format(path, extension))
     return normalized
 
+def _validate_archive_package_name(value, path):
+    name = _expect_string(value, path)
+    components = name.split("/")
+    if name.startswith("@"):
+        canonical_shape = (
+            len(components) == 2 and
+            len(components[0]) > 1 and
+            bool(components[1])
+        )
+    else:
+        canonical_shape = len(components) == 1 and bool(components[0])
+    if (
+        not canonical_shape or
+        "\\" in name or
+        any([component in [".", ".."] for component in components]) or
+        any([character in "*?[]" for character in name.elems()])
+    ):
+        fail(
+            "Yarn graph parse error: {} must be a safe canonical unscoped or @scope/name package name".format(
+                path,
+            ),
+        )
+    return components
+
 def _validate_classic_resolved_url(value, legacy_sha1, path):
     value = _expect_string(value, path)
     if (
@@ -900,7 +924,9 @@ def _parse_yarn_graph_json(content, graph_label, no_dev = False, no_optional = F
             (no_dev and no_optional and not prod_reachable)
         ):
             continue
-        name = _expect_string(raw_package.get("name"), "packages[{}].name".format(package_key))
+        name_path = "packages[{}].name".format(package_key)
+        name_components = _validate_archive_package_name(raw_package.get("name"), name_path)
+        name = "/".join(name_components)
         version = _expect_string(raw_package.get("version"), "packages[{}].version".format(package_key))
         expected_key = _package_key(name, version)
         if package_key != expected_key:
@@ -988,9 +1014,13 @@ def _parse_yarn_graph_json(content, graph_label, no_dev = False, no_optional = F
                         package_key,
                     ),
                 )
+            archive_root = "/".join(["node_modules"] + name_components)
             normalized_resolution = {
                 "archive": graph_label.relative(archive),
+                "archive_format": "zip",
+                "archive_root": archive_root,
                 "archive_sha256": archive_sha256,
+                "archive_strip_components": len(archive_root.split("/")),
                 "locator": _validate_locator_display(
                     resolution.get("locator"),
                     name,
@@ -1055,7 +1085,10 @@ def _parse_yarn_graph_json(content, graph_label, no_dev = False, no_optional = F
                 )
             normalized_resolution = {
                 "archive": graph_label.relative(archive),
+                "archive_format": "tar",
+                "archive_root": "package",
                 "archive_sha256": archive_sha256,
+                "archive_strip_components": 1,
                 "integrity": _validate_sri(
                     resolution.get("integrity"),
                     "packages[{}].resolution.integrity".format(package_key),

@@ -370,7 +370,10 @@ def _get_npm_imports(state, replace_packages, attr, registries, npm_auth, exclud
         repo = resolution.get("repo", None)
         commit = resolution.get("commit", None)
         archive = resolution.get("archive", None)
+        archive_format = resolution.get("archive_format", "")
+        archive_root = resolution.get("archive_root", "")
         archive_sha256 = resolution.get("archive_sha256", None)
+        archive_strip_components = resolution.get("archive_strip_components", 0)
         yarn_checksum = resolution.get("yarn_checksum", None)
         is_yarn_resolution = resolution_type in ["yarn-cache", "yarn-classic-tarball"]
 
@@ -381,13 +384,21 @@ def _get_npm_imports(state, replace_packages, attr, registries, npm_auth, exclud
         elif resolution_type == "yarn-cache":
             if type(archive) != "Label" or not archive_sha256 or not yarn_checksum:
                 fail("expected package {} Yarn cache resolution to have archive Label, archive_sha256, and yarn_checksum fields".format(package_key))
+            expected_archive_root = "node_modules/{}".format(name)
+            expected_strip_components = len(expected_archive_root.split("/"))
+            if archive_format != "zip" or archive_root != expected_archive_root or archive_strip_components != expected_strip_components:
+                fail("expected package {} Yarn cache resolution to identify its exact ZIP archive root".format(package_key))
             if integrity or tarball or registry or repo or commit:
                 fail("expected package {} Yarn cache resolution to omit integrity, tarball, registry, repo, and commit fields".format(package_key))
         elif resolution_type == "yarn-classic-tarball":
             if type(archive) != "Label" or not archive_sha256 or not integrity or yarn_checksum:
                 fail("expected package {} Yarn Classic resolution to have archive Label, archive_sha256, and integrity fields, and no yarn_checksum".format(package_key))
+            if archive_format != "tar" or archive_root != "package" or archive_strip_components != 1:
+                fail("expected package {} Yarn Classic resolution to identify its exact tar archive root".format(package_key))
             if tarball or registry or repo or commit:
                 fail("expected package {} Yarn Classic resolution to omit tarball, registry, repo, and commit fields".format(package_key))
+        elif archive_format or archive_root or archive_strip_components:
+            fail("expected package {} non-Yarn resolution to omit archive metadata".format(package_key))
         elif not integrity and not tarball:
             msg = "expected package {} resolution to have an integrity or tarball field but found none".format(package_key)
             fail(msg)
@@ -526,7 +537,10 @@ ERROR: can not apply both `pnpm.patchedDependencies` and `npm_translate_lock(pat
 
         result_pkg = struct(
             archive = archive,
+            archive_format = archive_format,
+            archive_root = archive_root,
             archive_sha256 = archive_sha256,
+            archive_strip_components = archive_strip_components,
             custom_postinstall = custom_postinstall,
             deps = package_info["dependencies"] | package_info["optional_dependencies"],
             deps_oss = deps_oss,

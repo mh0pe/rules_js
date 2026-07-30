@@ -1,5 +1,16 @@
+load("@aspect_rules_js//npm/private/test:npm_package_archive_action_test.bzl", "npm_package_archive_action_test")
+load("@npm_reachability_berry//:defs.bzl", "npm_link_all_packages")
+
 exports_files([
     ".yarnrc.yml",
     "package.json",
     "yarn.lock",
 ])
+
+npm_link_all_packages()
+
+npm_package_archive_action_test(
+    name = "scoped_berry_archive_action_test",
+    expected_archive_basename = "package.zip",
+    target_under_test = ":.aspect_rules_js/node_modules/@isaacs+fs-minipass@383501273",
+)

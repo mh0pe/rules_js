@@ -1,4 +1,4 @@
-load("@aspect_rules_js//js:defs.bzl", "js_test")
+load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_test")
 load("@bazel_lib//lib:write_source_files.bzl", "write_source_files")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@npm//:defs.bzl", "npm_link_all_packages")
@@ -6,6 +6,7 @@ load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load(":generated_pkg_json_test.bzl", "generated_pkg_json_test")
 load(":libc_select_resolution_test.bzl", "libc_select_resolution_test_suite")
 load(":npm_auth_test.bzl", "npm_auth_test_suite")
+load(":npm_package_archive_content_test.bzl", "npm_package_archive_content_test")
 load(":npm_package_visibility_test.bzl", "npm_package_visibility_tests")
 load(":npmrc_test.bzl", "npmrc_tests")
 load(":parse_pnpm_lock_tests.bzl", "parse_pnpm_lock_tests")
@@ -18,6 +19,17 @@ load(":yarn_lock_extension_test.bzl", "yarn_lock_extension_tests")
 load(":yarn_lock_repository_test.bzl", "yarn_lock_repository_tests")
 
 npm_link_all_packages()
+
+js_binary(
+    name = "npm_package_archive_fixture_generator",
+    entry_point = "npm_package_archive_fixture_generator.cjs",
+)
+
+js_binary(
+    name = "npm_package_archive_content_validator",
+    entry_point = "npm_package_archive_content_validator.cjs",
+    patch_node_fs = False,
+)
 
 # Unit tests
 utils_tests(name = "test_utils")
@@ -66,6 +78,8 @@ generated_pkg_json_test(name = "test_generated_pkg_json")
 npm_package_visibility_tests(name = "test_npm_package_visibility")
 
 npm_auth_test_suite()
+
+npm_package_archive_content_test(name = "npm_package_archive_content_test")
 
 write_source_files(
     name = "write_npm_translate_lock",

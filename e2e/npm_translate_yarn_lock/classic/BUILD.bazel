@@ -1,4 +1,5 @@
 load("@aspect_rules_js//js:defs.bzl", "js_test")
+load("@aspect_rules_js//npm/private/test:npm_package_archive_action_test.bzl", "npm_package_archive_action_test")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@npm_classic//:defs.bzl", "npm_link_all_packages")
 load("@npm_classic//classic:semver/package_json.bzl", semver_bin = "bin")
@@ -10,6 +11,12 @@ exports_files([
 ])
 
 npm_link_all_packages(name = "node_modules")
+
+npm_package_archive_action_test(
+    name = "classic_archive_action_test",
+    expected_archive_basename = "package.tgz",
+    target_under_test = ":.aspect_rules_js/node_modules/semver@7.5.1_yarn_2d47b5a653015aba71699e87583e5c48",
+)
 
 semver_bin.semver_binary(name = "semver_binary")
 

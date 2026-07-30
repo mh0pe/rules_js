@@ -1,8 +1,15 @@
 load("@aspect_rules_js//js:defs.bzl", "js_test")
+load("@aspect_rules_js//npm/private/test:npm_package_archive_action_test.bzl", "npm_package_archive_action_test")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@npm//:defs.bzl", "npm_link_all_packages", "npm_link_targets")
 
 npm_link_all_packages()
+
+npm_package_archive_action_test(
+    name = "npm_tar_archive_action_test",
+    expected_archive_basename = "package.tgz",
+    target_under_test = ":.aspect_rules_js/node_modules/is-odd@3.0.1",
+)
 
 PROD_TARGETS = npm_link_targets(
     dev = False,

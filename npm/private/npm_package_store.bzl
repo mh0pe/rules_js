@@ -2,10 +2,10 @@
 
 load("@bazel_features//:features.bzl", "bazel_features")
 load("@bazel_lib//lib:copy_directory.bzl", "copy_directory_bin_action")
-load("@tar.bzl//tar:tar.bzl", "tar_lib")
 
 # buildifier: disable=bzl-visibility
 load("//js/private:js_info.bzl", "JsInfo")
+load(":npm_package_archive.bzl", "NPM_PACKAGE_ARCHIVE_TOOLCHAINS", "extract_npm_package_archive")
 load(":npm_package_info.bzl", "NpmPackageInfo")
 load(":npm_package_store_info.bzl", "NpmPackageStoreInfo")
 load(":utils.bzl", "utils")
@@ -13,10 +13,6 @@ load(":utils.bzl", "utils")
 _SUPPORTS_SYMLINK_TARGET_TYPE = bazel_features.rules.symlink_action_has_target_type
 
 _PACKAGE_STORE_PREFIX_LEN = len("node_modules/{}/".format(utils.package_store_root))
-
-_EXTRACT_EXECUTION_REQUIREMENTS = {
-    "supports-path-mapping": "1",
-}
 
 _DOC = """Defines a npm package that is linked into a node_modules tree.
 
@@ -241,44 +237,21 @@ def _npm_package_store_impl(ctx):
             package_store_directory = src
         else:
             package_store_directory = ctx.actions.declare_directory(package_store_directory_path)
-            if utils.is_tarball_extension(src.extension):
-                # npm packages are always published with one top-level directory inside the tarball,
-                # tho the name is not predictable we can use the --strip-components 1 argument with
-                # tar to strip one directory level. Some packages have directory permissions missing
-                # executable which make the directories not listable (pngjs@5.0.0 for example).
-                bsdtar = ctx.toolchains[tar_lib.toolchain_type]
-
-                args = ctx.actions.args()
-                args.add_all(
-                    [
-                        "--extract",
-                        "--no-same-owner",
-                        "--no-same-permissions",
-                        "--strip-components",
-                        "1",
-                        "--file",
-                        src,
-                        "--directory",
-                        package_store_directory,
-                    ],
-                    expand_directories = False,
-                )
-                if ctx.attr.exclude_package_contents:
-                    args.add_all(ctx.attr.exclude_package_contents, before_each = "--exclude")
-
-                ctx.actions.run(
-                    executable = bsdtar.tarinfo.binary,
-                    inputs = [src],
-                    outputs = [package_store_directory],
-                    arguments = [args],
-                    mnemonic = "NpmPackageExtract",
-                    progress_message = "Extracting npm package {}@{}".format(package, version),
-                    execution_requirements = _EXTRACT_EXECUTION_REQUIREMENTS,
-                    toolchain = Label("@tar.bzl//tar/toolchain:type"),
-
-                    # Always override the locale to give better hermeticity.
-                    # See https://github.com/aspect-build/rules_js/issues/2039
-                    env = getattr(bsdtar.tarinfo, "default_env", {}),
+            archive_format = getattr(npm_pkg_info, "archive_format", "")
+            if archive_format or utils.is_tarball_extension(src.extension):
+                # Keep the extension fallback for providers constructed against
+                # an older rules_js release. Generated imports carry explicit
+                # archive metadata, including Yarn cache ZIPs.
+                extract_npm_package_archive(
+                    ctx = ctx,
+                    src = src,
+                    dst = package_store_directory,
+                    archive_format = archive_format if archive_format else "tar",
+                    archive_root = getattr(npm_pkg_info, "archive_root", ""),
+                    archive_strip_components = getattr(npm_pkg_info, "archive_strip_components", 1),
+                    exclude_package_contents = ctx.attr.exclude_package_contents,
+                    package = package,
+                    version = version,
                 )
             else:
                 copy_directory_bin_action(
@@ -500,8 +473,7 @@ npm_package_store_lib = struct(
     provides = [DefaultInfo, NpmPackageStoreInfo],
     toolchains = [
         Label("@bazel_lib//lib:copy_directory_toolchain_type"),
-        tar_lib.toolchain_type,
-    ],
+    ] + NPM_PACKAGE_ARCHIVE_TOOLCHAINS,
 )
 
 npm_package_store = rule(

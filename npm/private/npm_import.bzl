@@ -438,6 +438,9 @@ _JS_PACKAGE_TMPL = """
 _npm_package_internal(
     name = "pkg",
     src = ":{package_src}",
+    archive_format = "{archive_format}",
+    archive_root = "{archive_root}",
+    archive_strip_components = {archive_strip_components},
     package = "{package}",
     version = "{version}",
     visibility = ["//visibility:public"],
@@ -598,12 +601,30 @@ def _extract_yarn_archive(rctx):
         for character in rctx.attr.archive_sha256.elems()
     ]):
         fail("'archive_sha256' must be 64 lowercase hexadecimal characters")
-    is_classic = bool(rctx.attr.integrity)
+    if rctx.attr.archive_format not in ["tar", "zip"]:
+        fail("'archive_format' must be tar or zip for a Yarn archive")
+    if not rctx.attr.archive_root:
+        fail("'archive_root' is required for a Yarn archive")
+    if rctx.attr.archive_strip_components <= 0:
+        fail("'archive_strip_components' must be positive for a Yarn archive")
+
+    is_classic = rctx.attr.archive_format == "tar"
     if is_classic:
+        if rctx.attr.archive_root != "package" or rctx.attr.archive_strip_components != 1:
+            fail("Yarn Classic archives must use archive_root 'package' and strip one component")
+        if not rctx.attr.integrity:
+            fail("'integrity' is required for a Yarn Classic tarball")
         if rctx.attr.yarn_checksum:
             fail("'yarn_checksum' must be empty for a Yarn Classic tarball")
-    elif not rctx.attr.yarn_checksum:
-        fail("'yarn_checksum' is required for a Yarn Berry cache archive")
+    else:
+        expected_root = "node_modules/{}".format(rctx.attr.package)
+        expected_components = 3 if rctx.attr.package.startswith("@") else 2
+        if rctx.attr.archive_root != expected_root or rctx.attr.archive_strip_components != expected_components:
+            fail("Yarn Berry archives must identify the package's exact node_modules archive root")
+        if rctx.attr.integrity:
+            fail("'integrity' must be empty for a Yarn Berry cache archive")
+        if not rctx.attr.yarn_checksum:
+            fail("'yarn_checksum' is required for a Yarn Berry cache archive")
     if rctx.attr.url or rctx.attr.commit:
         fail("'archive' is mutually exclusive with 'url' and 'commit'")
     if rctx.attr.exclude_package_contents:
@@ -678,10 +699,8 @@ if (integrity) {
     rctx.extract(
         archive = archive_filename,
         output = _EXTRACT_TO_DIRNAME,
-        stripPrefix = "package" if is_classic else "node_modules/{}".format(rctx.attr.package),
+        stripPrefix = rctx.attr.archive_root,
     )
-    if not rctx.delete(archive_filename):
-        fail("Failed to delete temporary Yarn import file '{}'".format(archive_filename))
 
 def _npm_import_rule_impl(rctx):
     has_lifecycle_hooks = bool(rctx.attr.lifecycle_hooks) or bool(rctx.attr.custom_postinstall)
@@ -689,11 +708,25 @@ def _npm_import_rule_impl(rctx):
 
     reproducible = False
     package_src = _EXTRACT_TO_DIRNAME
+    archive_format = ""
+    archive_root = ""
+    archive_strip_components = 0
 
     if rctx.attr.archive:
         _extract_yarn_archive(rctx)
-    elif rctx.attr.archive_sha256 or rctx.attr.yarn_checksum:
-        fail("'archive_sha256' and 'yarn_checksum' require 'archive'")
+        if not rctx.attr.extract_full_archive and not has_patches and not has_lifecycle_hooks:
+            package_src = _TARBALL_FILENAME if rctx.attr.archive_format == "tar" else _YARN_ARCHIVE_FILENAME
+            archive_format = rctx.attr.archive_format
+            archive_root = rctx.attr.archive_root
+            archive_strip_components = rctx.attr.archive_strip_components
+    elif (
+        rctx.attr.archive_sha256 or
+        rctx.attr.archive_format or
+        rctx.attr.archive_root or
+        rctx.attr.archive_strip_components or
+        rctx.attr.yarn_checksum
+    ):
+        fail("archive metadata requires 'archive'")
     elif rctx.attr.commit:
         _fetch_git_repository(rctx)
         reproducible = True
@@ -705,6 +738,8 @@ def _npm_import_rule_impl(rctx):
         # TODO: support tarball package_src with lifecycle hooks
         _download_and_extract_archive(rctx, package_json_only = True)
         package_src = _TARBALL_FILENAME
+        archive_format = "tar"
+        archive_strip_components = 1
         if rctx.attr.integrity:
             reproducible = True
 
@@ -727,6 +762,9 @@ def _npm_import_rule_impl(rctx):
     }
 
     rctx_files["BUILD.bazel"].append(_JS_PACKAGE_TMPL.format(
+        archive_format = archive_format,
+        archive_root = archive_root,
+        archive_strip_components = archive_strip_components,
         package_src = package_src,
         package = rctx.attr.package,
         version = rctx.attr.version,
@@ -1191,7 +1229,10 @@ _ATTRS_LINKS = _COMMON_ATTRS | {
 
 _ATTRS = _COMMON_ATTRS | {
     "archive": attr.label(allow_single_file = True),
+    "archive_format": attr.string(values = ["", "tar", "zip"]),
+    "archive_root": attr.string(),
     "archive_sha256": attr.string(),
+    "archive_strip_components": attr.int(),
     "commit": attr.string(doc = "Specific commit to be checked out if url is a git repository."),
     "custom_postinstall": attr.string(doc = """
         Custom string postinstall script to run on the installed npm package.
@@ -1423,7 +1464,10 @@ def npm_import(
         exclude_package_contents,
         exclude_package_contents_presets,
         archive = None,
+        archive_format = "",
+        archive_root = "",
         archive_sha256 = "",
+        archive_strip_components = 0,
         node_toolchain_prefix = "nodejs",
         yarn_checksum = "",
         yarn_conditions = {},
@@ -1439,7 +1483,10 @@ def npm_import(
         link_workspace = link_workspace,
         node_toolchain_prefix = node_toolchain_prefix,
         archive = archive,
+        archive_format = archive_format,
+        archive_root = archive_root,
         archive_sha256 = archive_sha256,
+        archive_strip_components = archive_strip_components,
         integrity = integrity,
         url = url,
         commit = commit,

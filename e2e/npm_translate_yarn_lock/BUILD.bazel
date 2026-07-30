@@ -1,10 +1,31 @@
 load("@aspect_rules_js//js:defs.bzl", "js_test")
+load("@aspect_rules_js//npm/private/test:npm_package_archive_action_test.bzl", "npm_package_archive_action_test")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 load("@npm//:semver/package_json.bzl", semver_bin = "bin")
 load(":output_hygiene_test.bzl", "output_hygiene_test")
 
 npm_link_all_packages()
+
+npm_package_archive_action_test(
+    name = "berry_archive_action_test",
+    expected_archive_basename = "package.zip",
+    target_under_test = ":.aspect_rules_js/node_modules/semver@6.3.1_yarn_bcba31fdbed5203cbf1fe8269621bc2e",
+)
+
+filegroup(
+    name = "untouched_berry_archive_directory",
+    srcs = [":.aspect_rules_js/node_modules/semver@6.3.1_yarn_bcba31fdbed5203cbf1fe8269621bc2e"],
+    output_group = "package_directory",
+)
+
+js_test(
+    name = "untouched_archive_runtime_test",
+    size = "small",
+    args = ["$(rootpath :untouched_berry_archive_directory)"],
+    data = [":untouched_berry_archive_directory"],
+    entry_point = "untouched_archive_runtime_test.js",
+)
 
 semver_bin.semver_binary(name = "semver_binary")
 
