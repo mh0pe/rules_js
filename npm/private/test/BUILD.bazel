@@ -50,6 +50,7 @@ js_test(
 
 js_test(
     name = "yarn_lock_input_copy_test",
+    size = "small",
     data = ["//npm/private:yarn_lock_input_copy"],
     entry_point = "yarn_lock_input_copy_test.mjs",
 )

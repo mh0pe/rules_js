@@ -1,5 +1,6 @@
 """Tests for yarn_lock extension repository-name resolution."""
 
+load("@bazel_skylib//lib:partial.bzl", "partial")
 load("@bazel_skylib//lib:unittest.bzl", "asserts", "unittest")
 load("//npm/private:yarn_lock_extension.bzl", "resolve_yarn_lock_repositories")
 
@@ -79,8 +80,8 @@ former_tool_name_collision_is_allowed_test = unittest.make(_former_tool_name_col
 def yarn_lock_extension_tests(name):
     unittest.suite(
         name,
-        root_registration_test,
-        dependency_registration_rejected_test,
-        duplicate_registration_reports_both_modules_test,
-        former_tool_name_collision_is_allowed_test,
+        partial.make(root_registration_test, size = "small"),
+        partial.make(dependency_registration_rejected_test, size = "small"),
+        partial.make(duplicate_registration_reports_both_modules_test, size = "small"),
+        partial.make(former_tool_name_collision_is_allowed_test, size = "small"),
     )
