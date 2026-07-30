@@ -1,1 +1,1 @@
-module.exports = require("semver/package.json").version;
+module.exports = require('semver/package.json').version

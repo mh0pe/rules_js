@@ -1,4 +1,4 @@
-const assert = require("node:assert/strict");
-const peerVersion = require("@rules-js-yarn/peer-reader");
+const assert = require('node:assert/strict')
+const peerVersion = require('@rules-js-yarn/peer-reader')
 
-assert.equal(peerVersion, "7.6.3");
+assert.equal(peerVersion, '7.6.3')

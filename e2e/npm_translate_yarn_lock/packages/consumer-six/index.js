@@ -1,1 +1,1 @@
-module.exports = require("@rules-js-yarn/peer-reader");
+module.exports = require('@rules-js-yarn/peer-reader')

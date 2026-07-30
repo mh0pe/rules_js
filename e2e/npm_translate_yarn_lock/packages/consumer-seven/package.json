@@ -1,9 +1,9 @@
 {
-  "name": "@rules-js-yarn/consumer-seven",
-  "version": "1.0.0",
-  "main": "index.js",
-  "dependencies": {
-    "@rules-js-yarn/peer-reader": "workspace:*",
-    "semver": "patch:semver@npm%3A7.6.3#~/.yarn/patches/semver-npm-7.6.3-57e82c14d5.patch"
-  }
+    "name": "@rules-js-yarn/consumer-seven",
+    "version": "1.0.0",
+    "main": "index.js",
+    "dependencies": {
+        "@rules-js-yarn/peer-reader": "workspace:*",
+        "semver": "patch:semver@npm%3A7.6.3#~/.yarn/patches/semver-npm-7.6.3-57e82c14d5.patch"
+    }
 }

@@ -1,12 +1,12 @@
 {
-  "name": "rules-js-yarn-graph-metadata",
-  "private": true,
-  "packageManager": "yarn@4.5.0",
-  "installConfig": {
-    "hoistingLimits": "dependencies",
-    "selfReferences": false
-  },
-  "dependencies": {
-    "cli-table3": "0.6.5"
-  }
+    "name": "rules-js-yarn-graph-metadata",
+    "private": true,
+    "packageManager": "yarn@4.5.0",
+    "installConfig": {
+        "hoistingLimits": "dependencies",
+        "selfReferences": false
+    },
+    "dependencies": {
+        "cli-table3": "0.6.5"
+    }
 }

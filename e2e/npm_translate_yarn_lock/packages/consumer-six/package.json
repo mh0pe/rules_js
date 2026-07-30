@@ -1,9 +1,9 @@
 {
-  "name": "@rules-js-yarn/consumer-six",
-  "version": "1.0.0",
-  "main": "index.js",
-  "dependencies": {
-    "@rules-js-yarn/peer-reader": "workspace:*",
-    "semver": "6.3.1"
-  }
+    "name": "@rules-js-yarn/consumer-six",
+    "version": "1.0.0",
+    "main": "index.js",
+    "dependencies": {
+        "@rules-js-yarn/peer-reader": "workspace:*",
+        "semver": "6.3.1"
+    }
 }

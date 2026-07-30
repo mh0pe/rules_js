@@ -4,7 +4,11 @@ const { readFileSync } = require('node:fs')
 const paths = Object.fromEntries(
     process.argv.slice(2).map((argument) => {
         const separator = argument.indexOf('=')
-        assert.notEqual(separator, -1, `expected name=path argument, got ${argument}`)
+        assert.notEqual(
+            separator,
+            -1,
+            `expected name=path argument, got ${argument}`
+        )
         return [argument.slice(0, separator), argument.slice(separator + 1)]
     })
 )
@@ -101,7 +105,10 @@ const modeGraphs = Object.fromEntries(
         assert.equal(pkg.friendly_version, '7.0.0')
         assert.equal(pkg.resolution.archive, LINKER_ARCHIVE)
         assert.equal(pkg.resolution.archive_sha256, LINKER_ARCHIVE_SHA256)
-        assert.equal(graph.importers['.'].dependencies['is-number'], pkg.version)
+        assert.equal(
+            graph.importers['.'].dependencies['is-number'],
+            pkg.version
+        )
 
         return [name, graph]
     })
@@ -164,7 +171,10 @@ const assertReachability = (fixtureName) => {
     const fsevents = findPackage(graph, 'fsevents', '2.3.3')
 
     assert.equal(importer.dev_dependencies.chokidar, chokidar.version)
-    assert.equal(importer.optional_dependencies['fill-range'], fillRange.version)
+    assert.equal(
+        importer.optional_dependencies['fill-range'],
+        fillRange.version
+    )
 
     const braces = findPackageVersion(
         graph,
