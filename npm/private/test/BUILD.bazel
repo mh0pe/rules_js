@@ -4,6 +4,7 @@ load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load(":generated_pkg_json_test.bzl", "generated_pkg_json_test")
+load(":libc_select_resolution_test.bzl", "libc_select_resolution_test_suite")
 load(":npm_auth_test.bzl", "npm_auth_test_suite")
 load(":npm_package_visibility_test.bzl", "npm_package_visibility_tests")
 load(":npmrc_test.bzl", "npmrc_tests")
@@ -24,6 +25,8 @@ utils_tests(name = "test_utils")
 npmrc_tests(name = "test_npmrc")
 
 pnpm_tests(name = "test_pnpm")
+
+libc_select_resolution_test_suite(name = "libc_select_resolution_tests")
 
 yarn_lock_extension_tests(name = "test_yarn_lock_extension")
 
