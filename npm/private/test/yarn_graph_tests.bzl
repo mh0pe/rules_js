@@ -223,6 +223,17 @@ def _conditions_and_dependency_filtering_test_impl(ctx):
     asserts.equals(env, ["x64"], conditional_packages[_PACKAGE_KEY]["cpu"])
     asserts.equals(env, ["glibc"], conditional_packages[_PACKAGE_KEY]["libc"])
 
+    grouped_graph = _graph("berry-v8")
+    grouped_graph["packages"][_PACKAGE_KEY]["conditions"] = "(os=linux | os=darwin) & (!cpu=ia32 | !cpu=arm) & !libc=musl"
+    _, grouped_packages, error = yarn_graph.parse_json(
+        json.encode(grouped_graph),
+        _GRAPH_LABEL,
+    )
+    asserts.equals(env, None, error)
+    asserts.equals(env, ["linux", "darwin"], grouped_packages[_PACKAGE_KEY]["os"])
+    asserts.equals(env, ["!ia32", "!arm"], grouped_packages[_PACKAGE_KEY]["cpu"])
+    asserts.equals(env, ["!musl"], grouped_packages[_PACKAGE_KEY]["libc"])
+
     dev_graph = _graph("berry-v8")
     dev_graph["importers"]["."]["dependencies"] = {}
     dev_graph["importers"]["."]["dev_dependencies"] = {_PACKAGE_NAME: _PACKAGE_VERSION}

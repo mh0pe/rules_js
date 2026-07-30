@@ -3,6 +3,7 @@ const { posix } = require('node:path')
 
 const {
     __internal: {
+        assertNoWorkspaceDependencyKindOverlap,
         childReachabilityState,
         classicHttpStatusError,
         classicHttpsProxyIsConfigured,
@@ -350,6 +351,42 @@ assert.deepEqual(reachabilityMetadata(new Set()), {
     optional: false,
     prod_reachable: false,
 })
+
+const productionDescriptor = {
+    identHash: 'production',
+}
+const developmentDescriptor = {
+    identHash: 'development',
+}
+const sharedDescriptor = {
+    identHash: 'shared',
+}
+assert.doesNotThrow(() =>
+    assertNoWorkspaceDependencyKindOverlap(
+        {
+            dependencies: new Map([
+                [productionDescriptor.identHash, productionDescriptor],
+            ]),
+        },
+        developmentDescriptor,
+        '/workspace',
+        (descriptor) => descriptor.identHash
+    )
+)
+assert.throws(
+    () =>
+        assertNoWorkspaceDependencyKindOverlap(
+            {
+                dependencies: new Map([
+                    [sharedDescriptor.identHash, sharedDescriptor],
+                ]),
+            },
+            sharedDescriptor,
+            '/workspace',
+            (descriptor) => descriptor.identHash
+        ),
+    /Workspace \/workspace declares shared in dependencies and devDependencies/
+)
 
 void (async () => {
     let calls = 0

@@ -383,10 +383,26 @@ const reachabilityMetadata = (states) => {
     }
 }
 
+const assertNoWorkspaceDependencyKindOverlap = (
+    manifest,
+    descriptor,
+    workspaceCwd,
+    stringifyIdent
+) => {
+    if (manifest.dependencies.has(descriptor.identHash)) {
+        throw new Error(
+            `Workspace ${workspaceCwd} declares ` +
+                `${stringifyIdent(descriptor)} in dependencies and ` +
+                `devDependencies`
+        )
+    }
+}
+
 // Runtime Yarn plugin injected through YARN_PLUGINS. The exact pinned yarn.js
 // process provides these modules, so the exporter and resolver cannot drift.
 module.exports = {
     __internal: {
+        assertNoWorkspaceDependencyKindOverlap,
         childReachabilityState,
         classicHttpStatusError,
         classicHttpsProxyIsConfigured,
@@ -1840,15 +1856,12 @@ module.exports = {
                     )
                 }
                 for (const descriptor of manifest.devDependencies.values()) {
-                    if (manifest.dependencies.has(descriptor.identHash)) {
-                        throw new Error(
-                            `Workspace ${workspace.cwd} declares ` +
-                                `${structUtils.stringifyIdent(
-                                    descriptor
-                                )} in dependencies and ` +
-                                `devDependencies`
-                        )
-                    }
+                    assertNoWorkspaceDependencyKindOverlap(
+                        manifest,
+                        descriptor,
+                        workspace.cwd,
+                        structUtils.stringifyIdent
+                    )
                     enqueue(
                         resolveClassicDescriptor(
                             project,
@@ -3288,6 +3301,12 @@ module.exports = {
                     )
                 }
                 for (const descriptor of workspace.manifest.devDependencies.values()) {
+                    assertNoWorkspaceDependencyKindOverlap(
+                        workspace.manifest,
+                        descriptor,
+                        workspace.cwd,
+                        structUtils.stringifyIdent
+                    )
                     enqueue(
                         boundWorkspaceDescriptor(
                             project,
