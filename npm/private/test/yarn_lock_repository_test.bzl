@@ -89,9 +89,53 @@ def _yaml_root_keys_ambiguity_test_impl(ctx):
 yaml_root_keys_test = unittest.make(_yaml_root_keys_test_impl)
 yaml_root_keys_ambiguity_test = unittest.make(_yaml_root_keys_ambiguity_test_impl)
 
+def _path_independent_environment_test_impl(ctx):
+    env = unittest.begin(ctx)
+
+    asserts.equals(
+        env,
+        [
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "NODE_EXTRA_CA_CERTS",
+            "NO_PROXY",
+            "SSL_CERT_FILE",
+            "http_proxy",
+            "https_proxy",
+            "no_proxy",
+        ],
+        yarn_lock_repository_testonly.operational_environ,
+    )
+    asserts.equals(
+        env,
+        [
+            "COMSPEC",
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "NODE_EXTRA_CA_CERTS",
+            "NO_PROXY",
+            "PATHEXT",
+            "SSL_CERT_FILE",
+            "SYSTEMROOT",
+            "TEMP",
+            "TMP",
+            "TMPDIR",
+            "WINDIR",
+            "http_proxy",
+            "https_proxy",
+            "no_proxy",
+        ],
+        yarn_lock_repository_testonly.runner_inherited_environ,
+    )
+
+    return unittest.end(env)
+
+path_independent_environment_test = unittest.make(_path_independent_environment_test_impl)
+
 def yarn_lock_repository_tests(name):
     unittest.suite(
         name,
+        partial.make(path_independent_environment_test, size = "small"),
         partial.make(yaml_root_keys_test, size = "small"),
         partial.make(yaml_root_keys_ambiguity_test, size = "small"),
     )

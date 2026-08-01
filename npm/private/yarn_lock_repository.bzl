@@ -16,8 +16,27 @@ _OPERATIONAL_ENVIRON = [
     "HTTPS_PROXY",
     "NODE_EXTRA_CA_CERTS",
     "NO_PROXY",
-    "PATH",
     "SSL_CERT_FILE",
+    "http_proxy",
+    "https_proxy",
+    "no_proxy",
+]
+
+# Every executable launched by this repository rule is an absolute path supplied
+# by Bazel. Keep PATH out of both the repository key and the Yarn child process.
+_RUNNER_INHERITED_ENVIRON = [
+    "COMSPEC",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "NODE_EXTRA_CA_CERTS",
+    "NO_PROXY",
+    "PATHEXT",
+    "SSL_CERT_FILE",
+    "SYSTEMROOT",
+    "TEMP",
+    "TMP",
+    "TMPDIR",
+    "WINDIR",
     "http_proxy",
     "https_proxy",
     "no_proxy",
@@ -382,24 +401,7 @@ while (true) {
   configurationDirectory = parent;
 }
 const inherited = process.env;
-const allowed = [
-  "COMSPEC",
-  "HTTP_PROXY",
-  "HTTPS_PROXY",
-  "NODE_EXTRA_CA_CERTS",
-  "NO_PROXY",
-  "PATH",
-  "PATHEXT",
-  "SSL_CERT_FILE",
-  "SYSTEMROOT",
-  "TEMP",
-  "TMP",
-  "TMPDIR",
-  "WINDIR",
-  "http_proxy",
-  "https_proxy",
-  "no_proxy",
-];
+const allowed = __ASPECT_RULES_JS_RUNNER_INHERITED_ENVIRON__;
 const env = Object.fromEntries(
   allowed.flatMap(name => inherited[name] === undefined ? [] : [[name, inherited[name]]]),
 );
@@ -433,7 +435,10 @@ if (result.stdout) process.stdout.write(result.stdout);
 if (result.stderr) process.stderr.write(result.stderr);
 if (result.error) throw result.error;
 process.exit(result.status ?? 1);
-""",
+""".replace(
+            "__ASPECT_RULES_JS_RUNNER_INHERITED_ENVIRON__",
+            repr(_RUNNER_INHERITED_ENVIRON),
+        ),
     )
 
 def _execute(rctx, host_node, source_format, arguments, working_directory):
@@ -690,7 +695,9 @@ or binary_data.
 """,
 )
 
-# Exported for focused unit testing of the fail-closed YAML merge boundary.
+# Exported for focused unit testing of repository invariants.
 yarn_lock_repository_testonly = struct(
+    operational_environ = _OPERATIONAL_ENVIRON,
+    runner_inherited_environ = _RUNNER_INHERITED_ENVIRON,
     yaml_root_keys = _yaml_root_keys,
 )
