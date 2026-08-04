@@ -36,6 +36,14 @@ _install = tag_class(
             doc = "The checked-in Yarn Berry yarn.lock file.",
             mandatory = True,
         ),
+        "extra_data": attr.label_list(
+            doc = "Additional data files to include in PNP_RUNTIME_SRCS (e.g., ESM loaders, propagation scripts).",
+            default = [],
+        ),
+        "extra_node_options": attr.string_list(
+            doc = "Additional --require or other node options to add (e.g., ['--require=./path/to/preload.cjs']).",
+            default = [],
+        ),
     },
     doc = "Declares one Yarn PnP zero-install project to consume.",
 )
@@ -48,6 +56,8 @@ def _pnp_impl(mctx):
                 pnp_cjs = install.pnp_cjs,
                 pnp_data = install.pnp_data,
                 yarn_lock = install.yarn_lock,
+                extra_data = install.extra_data,
+                extra_node_options = install.extra_node_options,
             )
 
 pnp = module_extension(

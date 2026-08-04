@@ -29,6 +29,7 @@ PNP_PACKAGES = json.decode("""{packages_json}""")
 PNP_RUNTIME_SRCS = {runtime_srcs}
 
 _PNP_REQUIRE = "--require=./{pnp_cjs_rootpath}"
+_EXTRA_NODE_OPTIONS = {extra_node_options}
 
 def pnp_files(name, **kwargs):
     """A filegroup of all checked-in PnP runtime files."""
@@ -40,7 +41,7 @@ def pnp_files(name, **kwargs):
 
 def _pnp_wrap(kwargs):
     kwargs["data"] = kwargs.get("data", []) + PNP_RUNTIME_SRCS
-    kwargs["node_options"] = kwargs.get("node_options", []) + [_PNP_REQUIRE]
+    kwargs["node_options"] = kwargs.get("node_options", []) + [_PNP_REQUIRE] + _EXTRA_NODE_OPTIONS
 
     # PnP runtime files live in the monorepo root package but are referenced
     # by targets throughout the workspace. They must not be copied to the
@@ -178,7 +179,9 @@ def _pnp_repository_impl(rctx):
     ] + [
         "{}:.yarn/cache/{}".format(root_package, zip_name)
         for zip_name in validated.cache_zips
-    ]
+    ] + [str(label) for label in rctx.attr.extra_data]
+
+    extra_node_options = rctx.attr.extra_node_options
 
     pnp_cjs_rootpath = "/".join([p for p in [data_label.package, rctx.attr.pnp_cjs.name] if p])
 
@@ -186,6 +189,7 @@ def _pnp_repository_impl(rctx):
         root_package_label = root_package,
         packages_json = json.encode_indent(validated.packages, indent = "  "),
         runtime_srcs = json.encode_indent(runtime_srcs, indent = "  "),
+        extra_node_options = json.encode(extra_node_options),
         pnp_cjs_rootpath = pnp_cjs_rootpath,
         root_package_path = data_label.package if data_label.package else ".",
     ))
@@ -208,6 +212,14 @@ pnp_repository = repository_rule(
             doc = "The checked-in Yarn Berry yarn.lock file.",
             mandatory = True,
             allow_single_file = True,
+        ),
+        "extra_data": attr.label_list(
+            doc = "Additional data files to include in PNP_RUNTIME_SRCS.",
+            default = [],
+        ),
+        "extra_node_options": attr.string_list(
+            doc = "Additional node options to add (e.g., '--require=./path/to/preload.cjs').",
+            default = [],
         ),
     },
     doc = "Consumes a checked-in Yarn PnP zero-install project without running Yarn.",
