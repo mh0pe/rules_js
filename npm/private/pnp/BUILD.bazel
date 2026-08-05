@@ -6,8 +6,6 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 
-# Wraps the verifier so it can be the entry_point of js_test targets in other
-# packages and repositories (see pnp_verify_test in the generated defs.bzl).
 js_library(
     name = "pnp_verify",
     srcs = ["pnp_verify.mjs"],
