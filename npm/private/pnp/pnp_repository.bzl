@@ -54,6 +54,8 @@ def _pnp_wrap(kwargs):
     # not needed here.
     env = dict(kwargs.get("env", {{}}))
     env.setdefault("JS_BINARY__PATCH_NODE_FS", "0")
+    # Set PNP_WORKSPACE_ROOT so the loader can remap sandbox paths to workspace paths
+    env.setdefault("PNP_WORKSPACE_ROOT", "{root_package_path}")
     kwargs["env"] = env
     return kwargs
 
