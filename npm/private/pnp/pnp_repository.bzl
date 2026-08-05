@@ -7,6 +7,10 @@ Starlark that wires the checked-in artifacts (.pnp.cjs, the offline cache
 zips) into js_binary / js_test targets. All resolution and layout decisions
 were already made by Yarn and are fully described by the checked-in files;
 rules_js only consumes them.
+
+The generated pnp_js_binary/pnp_js_test macros automatically include a preload
+script (pnp_preload.cjs) that remaps Bazel sandbox paths to workspace paths,
+so PnP resolution works correctly in sandboxed builds.
 """
 
 load(":pnp_data.bzl", "pnp_data")
@@ -28,6 +32,9 @@ PNP_PACKAGES = json.decode("""{packages_json}""")
 # file, the lockfile and the offline cache archives.
 PNP_RUNTIME_SRCS = {runtime_srcs}
 
+# The native Bazel sandbox preload script from rules_js
+_PNP_PRELOAD = "@aspect_rules_js//npm/private/pnp:pnp_preload.cjs"
+
 _PNP_REQUIRE = "--require=./{pnp_cjs_rootpath}"
 _EXTRA_NODE_OPTIONS = {extra_node_options}
 
@@ -40,31 +47,43 @@ def pnp_files(name, **kwargs):
     )
 
 def _pnp_wrap(kwargs):
-    kwargs["data"] = kwargs.get("data", []) + PNP_RUNTIME_SRCS
-    kwargs["node_options"] = kwargs.get("node_options", []) + [_PNP_REQUIRE] + _EXTRA_NODE_OPTIONS
+    # Include native preload script + user runtime files
+    kwargs["data"] = kwargs.get("data", []) + PNP_RUNTIME_SRCS + [_PNP_PRELOAD]
+    
+    # Add preload requirements: first the native sandbox remapper, then .pnp.cjs
+    kwargs["node_options"] = kwargs.get("node_options", []) + [
+        "--require=./npm/private/pnp/pnp_preload.cjs",
+        _PNP_REQUIRE,
+    ] + _EXTRA_NODE_OPTIONS
 
     # PnP runtime files live in the monorepo root package but are referenced
     # by targets throughout the workspace. They must not be copied to the
     # output tree (they are read in-place by the PnP resolver).
     no_copy = kwargs.get("no_copy_to_bin", [])
-    kwargs["no_copy_to_bin"] = no_copy + PNP_RUNTIME_SRCS
+    kwargs["no_copy_to_bin"] = no_copy + PNP_RUNTIME_SRCS + [_PNP_PRELOAD]
 
     # The PnP resolver installs its own fs layer to read modules out of the
     # cache zips; the js_binary fs patches are node_modules-oriented and are
     # not needed here.
     env = dict(kwargs.get("env", {{}}))
     env.setdefault("JS_BINARY__PATCH_NODE_FS", "0")
-    # Set PNP_WORKSPACE_ROOT so the loader can remap sandbox paths to workspace paths
+    # Set PNP_WORKSPACE_ROOT so the preload can remap sandbox paths to workspace paths
     env.setdefault("PNP_WORKSPACE_ROOT", "{root_package_path}")
     kwargs["env"] = env
     return kwargs
 
 def pnp_js_binary(name, **kwargs):
-    """A js_binary that resolves dependencies through the checked-in PnP runtime."""
+    """A js_binary that resolves dependencies through the checked-in PnP runtime.
+    
+    Automatically includes Bazel sandbox path remapping for PnP resolution.
+    """
     _js_binary(name = name, **_pnp_wrap(kwargs))
 
 def pnp_js_test(name, **kwargs):
-    """A js_test that resolves dependencies through the checked-in PnP runtime."""
+    """A js_test that resolves dependencies through the checked-in PnP runtime.
+    
+    Automatically includes Bazel sandbox path remapping for PnP resolution.
+    """
     _js_test(name = name, **_pnp_wrap(kwargs))
 
 def pnp_verify_test(name, **kwargs):

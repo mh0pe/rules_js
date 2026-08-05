@@ -2,7 +2,18 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//js:defs.bzl", "js_library")
 
 exports_files(
-    ["pnp_verify.mjs"],
+    [
+        "pnp_verify.mjs",
+        "pnp_preload.cjs",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# Native Bazel sandbox path remapping preload for Yarn PnP.
+# Automatically required by pnp_js_binary/pnp_js_test targets.
+js_library(
+    name = "pnp_preload",
+    srcs = ["pnp_preload.cjs"],
     visibility = ["//visibility:public"],
 )
 
