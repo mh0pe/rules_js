@@ -391,7 +391,8 @@ ERROR: can not apply both `pnpm.patchedDependencies` and `npm_translate_lock(pat
 
         # Apply patch from `pnpm.patchedDependencies` first
         if pnpm_patched:
-            patch_path = "//%s:%s" % (attr.pnpm_lock.package, pnpm_patch)
+            lock_label = state.pnpm_lock_label()
+            patch_path = "//%s:%s" % (lock_label.package, pnpm_patch)
             patches.append(patch_path)
 
             # pnpm patches are always applied with -p1
@@ -403,7 +404,8 @@ ERROR: can not apply both `pnpm.patchedDependencies` and `npm_translate_lock(pat
 
         # Resolve string patch labels relative to the root respository rather than relative to rules_js.
         # https://docs.google.com/document/d/1N81qfCa8oskCk5LqTW-LNthy6EBrDot7bdUsjz6JFC4/
-        patches = [attr.pnpm_lock.relative(patch) for patch in patches]
+        lock_label = state.pnpm_lock_label()
+        patches = [lock_label.relative(patch) for patch in patches]
 
         exclude_package_contents_result = _gather_package_content_excludes(exclude_package_contents_config, name, friendly_name, unfriendly_name)
 
@@ -676,9 +678,10 @@ def _verify_patches(rctx, attr, state):
         declared_patches = sets.make(state.pnpm_patches())
 
         # Patches in `npm_translate_lock(patches)`
+        lock_label = state.pnpm_lock_label()
         for patches in attr.patches.values():
             for patch in patches:
-                patch_label = attr.pnpm_lock.relative(patch)
+                patch_label = lock_label.relative(patch)
                 sets.insert(declared_patches, paths.join(patch_label.package, patch_label.name))
 
         if not sets.is_subset(verify_patches, declared_patches):
