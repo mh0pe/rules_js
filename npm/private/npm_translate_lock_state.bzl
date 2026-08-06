@@ -44,9 +44,9 @@ WARNING: `update_pnpm_lock` attribute in `npm_translate_lock(name = "{rctx_name}
         rctx.report_progress("Translating {}".format(attr.pnpm_lock))
         _load_lockfile(priv, rctx, attr, rctx.path(attr.pnpm_lock), is_windows)
     elif attr.yarn_lock and rctx.path(attr.yarn_lock).exists and getattr(attr, "yarn_lock_starlark", False):
-        # Use Starlark parser for yarn.lock (no pnpm import needed)
-        rctx.report_progress("Parsing {} with Starlark (no pnpm execution)".format(attr.yarn_lock))
-        _load_yarn_lockfile_starlark(priv, rctx, attr)
+        # Use yq + Starlark converter for yarn.lock (no pnpm import needed)
+        rctx.report_progress("Parsing {} with yq (no pnpm execution)".format(attr.yarn_lock))
+        _load_yarn_lockfile_starlark(priv, rctx, attr, is_windows)
 
     # May depend on lockfile state
     _init_root_package(priv)
@@ -457,22 +457,31 @@ def _has_workspaces(priv):
     return importer_paths and (len(importer_paths) > 1 or importer_paths[0] != ".")
 
 ################################################################################
-def _load_yarn_lockfile_starlark(priv, rctx, attr):
-    """Load and parse yarn.lock using pure Starlark parser.
+def _load_yarn_lockfile_starlark(priv, rctx, attr, is_windows):
+    """Load and parse yarn.lock using yq (upstream) + Starlark converter.
     
     This avoids running pnpm import, eliminating disk space issues from
-    pnpm temp files (ENOSPC).
+    pnpm temp files (ENOSPC). Uses yq.bzl upstream for YAML parsing.
     """
-    yarn_lock_content = rctx.read(attr.yarn_lock)
+    yarn_lock_path = rctx.path(attr.yarn_lock)
     
-    importers, packages, patched_dependencies, parse_err = yarn_lock_starlark.parse(
-        yarn_lock_content,
+    # Use yq to parse YAML to JSON - same as _yaml_to_json
+    yarn_lock_json, parse_err = _yaml_to_json(rctx, yarn_lock_path, is_windows)
+    
+    if parse_err:
+        fail("ERROR: yarn.lock yq parse error: {}".format(parse_err))
+    
+    if yarn_lock_json == None:
+        fail("ERROR: yarn.lock is empty or invalid")
+    
+    importers, packages, patched_dependencies, convert_err = yarn_lock_starlark.parse(
+        yarn_lock_json,
         attr.no_dev,
         attr.no_optional,
     )
     
-    if parse_err:
-        fail("ERROR: yarn.lock parse error: {}".format(parse_err))
+    if convert_err:
+        fail("ERROR: yarn.lock conversion error: {}".format(convert_err))
     
     calculate_transitive_closures(packages)
     

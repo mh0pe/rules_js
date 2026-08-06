@@ -1,11 +1,11 @@
-"""Pure Starlark parser for Yarn Berry lockfiles that outputs pnpm-compatible format.
+"""Converter for Yarn Berry lockfiles (parsed via yq) to pnpm-compatible format.
 
-This module parses yarn.lock files and converts them to the same structure that
+This module converts yarn.lock JSON (from yq) to the same structure that
 pnpm.parse_pnpm_lock_json() returns, allowing npm_translate_lock to work with
 Yarn projects without running pnpm import.
-"""
 
-load("//npm/private/pnp:yarn_berry_lock.bzl", "yarn_berry_lock")
+Uses yq.bzl upstream for YAML parsing - no duplication of YAML parsing logic.
+"""
 
 def _parse_package_specifier(specifier):
     """Parse a Yarn specifier like 'lodash@npm:4.17.21' into (name, version, protocol).
@@ -101,18 +101,44 @@ def _resolution_to_tarball_url(name, version, resolution):
         )
     return None
 
-def _parse_yarn_lock_to_pnpm_format(yarn_lock_content, no_dev = False, no_optional = False):
-    """Parse yarn.lock and return data in pnpm format.
+def _parse_yarn_lock_json(yarn_lock_json, no_dev = False, no_optional = False):
+    """Convert yarn.lock JSON (from yq) to pnpm format.
     
     Args:
-        yarn_lock_content: String content of yarn.lock file
+        yarn_lock_json: JSON string from yq parsing of yarn.lock YAML
         no_dev: If True, exclude devDependencies
         no_optional: If True, exclude optionalDependencies
         
     Returns:
         Tuple of (importers, packages, patched_dependencies, error)
     """
-    parsed = yarn_berry_lock.parse(yarn_lock_content)
+    root = json.decode(yarn_lock_json)
+    
+    # Validate it's a Yarn Berry lockfile
+    metadata = root.get("__metadata", None)
+    if metadata == None:
+        return {}, {}, {}, "yarn.lock has no __metadata block; only Yarn Berry lockfiles are supported"
+    
+    version = metadata.get("version", "")
+    supported_versions = ["6", "8", "10"]  # Yarn 3.x, 4.0-4.12, 4.18+
+    if version not in supported_versions:
+        return {}, {}, {}, "yarn.lock metadata version {} is not supported (supported: {})".format(version, ", ".join(supported_versions))
+    
+    # Build entries and descriptors maps
+    entries = {}
+    descriptors = {}
+    for key, entry in root.items():
+        if key == "__metadata":
+            continue
+        if type(entry) != "dict":
+            return {}, {}, {}, "yarn.lock entry {} is not a map".format(key)
+        resolution = entry.get("resolution", None)
+        if resolution == None:
+            return {}, {}, {}, "yarn.lock entry {} has no resolution".format(key)
+        entries[resolution] = entry
+        # A key can be multiple descriptors separated by ", "
+        for descriptor in key.split(", "):
+            descriptors[descriptor] = resolution
     
     importers = {}
     packages = {}
@@ -121,14 +147,14 @@ def _parse_yarn_lock_to_pnpm_format(yarn_lock_content, no_dev = False, no_option
     workspace_packages = {}
     
     # First pass: identify workspace packages
-    for resolution, entry in parsed.entries.items():
+    for resolution, entry in entries.items():
         link_type = entry.get("linkType", "hard")
         if link_type == "soft":
             name, version, _ = _parse_package_specifier(resolution)
             workspace_packages[name] = resolution
     
     # Second pass: convert packages
-    for resolution, entry in parsed.entries.items():
+    for resolution, entry in entries.items():
         link_type = entry.get("linkType", "hard")
         
         if link_type == "soft":
@@ -147,9 +173,9 @@ def _parse_yarn_lock_to_pnpm_format(yarn_lock_content, no_dev = False, no_option
                 importer_path = "."
             
             importers[importer_path] = {
-                "dependencies": _convert_dependencies(deps, parsed.entries, parsed.descriptors),
-                "dev_dependencies": _convert_dependencies(dev_deps, parsed.entries, parsed.descriptors) if not no_dev else {},
-                "optional_dependencies": _convert_dependencies(opt_deps, parsed.entries, parsed.descriptors) if not no_optional else {},
+                "dependencies": _convert_dependencies(deps, entries, descriptors),
+                "dev_dependencies": _convert_dependencies(dev_deps, entries, descriptors) if not no_dev else {},
+                "optional_dependencies": _convert_dependencies(opt_deps, entries, descriptors) if not no_optional else {},
             }
         else:
             # Regular package - add to packages
@@ -164,8 +190,8 @@ def _parse_yarn_lock_to_pnpm_format(yarn_lock_content, no_dev = False, no_option
             deps = entry.get("dependencies", {})
             opt_deps = entry.get("optionalDependencies", {})
             
-            pnpm_deps = _convert_dependencies(deps, parsed.entries, parsed.descriptors)
-            pnpm_opt_deps = _convert_dependencies(opt_deps, parsed.entries, parsed.descriptors) if not no_optional else {}
+            pnpm_deps = _convert_dependencies(deps, entries, descriptors)
+            pnpm_opt_deps = _convert_dependencies(opt_deps, entries, descriptors) if not no_optional else {}
             
             conditions = entry.get("conditions")
             cpu = None
@@ -216,5 +242,5 @@ def _parse_yarn_lock_to_pnpm_format(yarn_lock_content, no_dev = False, no_option
     return importers, packages, patched_dependencies, None
 
 yarn_lock_starlark = struct(
-    parse = _parse_yarn_lock_to_pnpm_format,
+    parse = _parse_yarn_lock_json,
 )
