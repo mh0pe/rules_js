@@ -247,6 +247,11 @@ def _parse_yarn_lock_json(yarn_lock_json, no_dev = False, no_optional = False):
             if protocol == "workspace":
                 continue
             
+            # Skip Yarn's internal patch entries - they reference packages that
+            # are already in the lockfile with npm: protocol
+            if protocol == "patch":
+                continue
+            
             checksum = entry.get("checksum")
             integrity = _yarn_checksum_to_integrity(checksum)
             
@@ -288,14 +293,6 @@ def _parse_yarn_lock_json(yarn_lock_json, no_dev = False, no_optional = False):
                 "cpu": cpu,
                 "os": os,
             }
-            
-            # Only track real user patches, not Yarn's built-in optional patches
-            # Built-in patches have "#optional!builtin" or similar in the version
-            if protocol == "patch" and "builtin" not in version:
-                patched_dependencies[name] = {
-                    "path": version,
-                    "hash": checksum,
-                }
     
     if not importers:
         importers["."] = {
