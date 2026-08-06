@@ -9,6 +9,7 @@ load(":npmrc.bzl", "parse_npmrc")
 load(":pnpm.bzl", "pnpm")
 load(":transitive_closure.bzl", "calculate_transitive_closures")
 load(":utils.bzl", "INTERNAL_ERROR_MSG", "utils")
+load(":yarn_lock_starlark.bzl", "yarn_lock_starlark")
 
 NPM_RC_FILENAME = ".npmrc"
 PACKAGE_JSON_FILENAME = "package.json"
@@ -38,11 +39,14 @@ WARNING: `update_pnpm_lock` attribute in `npm_translate_lock(name = "{rctx_name}
         # labels only needed when updating the pnpm lock file
         _init_update_labels(priv, rctx, attr)
 
-    # parse the pnpm lock file incase since we need the importers list for additional init
+    # parse the lock file since we need the importers list for additional init
     if attr.pnpm_lock and rctx.path(attr.pnpm_lock).exists:
         rctx.report_progress("Translating {}".format(attr.pnpm_lock))
-
         _load_lockfile(priv, rctx, attr, rctx.path(attr.pnpm_lock), is_windows)
+    elif attr.yarn_lock and rctx.path(attr.yarn_lock).exists and getattr(attr, "yarn_lock_starlark", False):
+        # Use Starlark parser for yarn.lock (no pnpm import needed)
+        rctx.report_progress("Parsing {} with Starlark (no pnpm execution)".format(attr.yarn_lock))
+        _load_yarn_lockfile_starlark(priv, rctx, attr)
 
     # May depend on lockfile state
     _init_root_package(priv)
@@ -451,6 +455,33 @@ def _load_lockfile(priv, rctx, attr, pnpm_lock_path, is_windows):
 def _has_workspaces(priv):
     importer_paths = priv["importers"].keys()
     return importer_paths and (len(importer_paths) > 1 or importer_paths[0] != ".")
+
+################################################################################
+def _load_yarn_lockfile_starlark(priv, rctx, attr):
+    """Load and parse yarn.lock using pure Starlark parser.
+    
+    This avoids running pnpm import, eliminating disk space issues from
+    pnpm temp files (ENOSPC).
+    """
+    yarn_lock_content = rctx.read(attr.yarn_lock)
+    
+    importers, packages, patched_dependencies, parse_err = yarn_lock_starlark.parse(
+        yarn_lock_content,
+        attr.no_dev,
+        attr.no_optional,
+    )
+    
+    if parse_err:
+        fail("ERROR: yarn.lock parse error: {}".format(parse_err))
+    
+    calculate_transitive_closures(packages)
+    
+    priv["importers"] = importers
+    priv["packages"] = packages
+    priv["pnpm_patched_dependencies"] = patched_dependencies
+    
+    # Set the pnpm_lock_label to point to yarn.lock for consistency
+    priv["pnpm_lock_label"] = attr.yarn_lock
 
 ################################################################################
 def _should_update_pnpm_lock(priv):

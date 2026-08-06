@@ -334,6 +334,12 @@ For more about how to use npm_translate_lock, read [pnpm and rules_js](/docs/pnp
 
             Only one of `npm_package_lock` or `yarn_lock` may be set.
         """),
+        "yarn_lock_starlark": attr.bool(default = False, doc = """
+            If True, parse yarn.lock using a pure Starlark parser instead of
+            running `pnpm import`. This avoids disk space issues (ENOSPC)
+            from pnpm temp files and is faster. Only works with Yarn Berry
+            (v2+) lockfiles.
+        """),
     },
 )
 
