@@ -66,19 +66,21 @@ def _convert_dependencies(deps_dict, lock_entries, descriptors):
     Note: For aliased dependencies (like react-helmet-async -> @slorber/react-helmet-async),
     the key is the alias name, but the value is the actual package key.
     
+    For workspace packages, returns link:package_name|path format.
+    
     Yarn Berry v10+ lockfiles may not include range descriptors when only one
     package references a dependency with a range. We handle this by falling
     back to finding the package by name in entries.
     """
     result = {}
     
-    # Build a map from package name -> list of (version, resolution) for fallback
+    # Build a map from package name -> list of (version, resolution, protocol) for fallback
     name_to_versions = {}
     for resolution, entry in lock_entries.items():
-        pkg_name, pkg_version, _ = _parse_package_specifier(resolution)
+        pkg_name, pkg_version, pkg_protocol = _parse_package_specifier(resolution)
         if pkg_name not in name_to_versions:
             name_to_versions[pkg_name] = []
-        name_to_versions[pkg_name].append((pkg_version, resolution))
+        name_to_versions[pkg_name].append((pkg_version, resolution, pkg_protocol))
     
     for dep_name, spec in deps_dict.items():
         # Try exact descriptor lookup first
@@ -90,8 +92,15 @@ def _convert_dependencies(deps_dict, lock_entries, descriptors):
             if entry:
                 # Parse the resolution to get the actual package name and version
                 # This handles aliased packages correctly
-                pkg_name, pkg_version, _ = _parse_package_specifier(resolution)
-                result[dep_name] = "{}@{}".format(pkg_name, pkg_version)
+                pkg_name, pkg_version, pkg_protocol = _parse_package_specifier(resolution)
+                
+                # Handle workspace packages - use link: format
+                if pkg_protocol == "workspace":
+                    # Format: link:package_name|relative_path
+                    # pkg_version contains the workspace-relative path (e.g., "packages/api")
+                    result[dep_name] = "link:{}|{}".format(pkg_name, pkg_version)
+                else:
+                    result[dep_name] = "{}@{}".format(pkg_name, pkg_version)
                 continue
         
         # Fallback: find the package by name in entries
@@ -100,8 +109,11 @@ def _convert_dependencies(deps_dict, lock_entries, descriptors):
             versions = name_to_versions[dep_name]
             if len(versions) == 1:
                 # Only one version of this package - use it
-                pkg_version, _ = versions[0]
-                result[dep_name] = "{}@{}".format(dep_name, pkg_version)
+                pkg_version, _, pkg_protocol = versions[0]
+                if pkg_protocol == "workspace":
+                    result[dep_name] = "link:{}|{}".format(dep_name, pkg_version)
+                else:
+                    result[dep_name] = "{}@{}".format(dep_name, pkg_version)
                 continue
             else:
                 # Multiple versions - try to match the spec
@@ -112,18 +124,36 @@ def _convert_dependencies(deps_dict, lock_entries, descriptors):
                 
                 # Try exact version match first
                 found_match = False
-                for pkg_version, _ in versions:
+                for pkg_version, _, pkg_protocol in versions:
                     if pkg_version == clean_spec:
-                        result[dep_name] = "{}@{}".format(dep_name, pkg_version)
+                        if pkg_protocol == "workspace":
+                            result[dep_name] = "link:{}|{}".format(dep_name, pkg_version)
+                        else:
+                            result[dep_name] = "{}@{}".format(dep_name, pkg_version)
                         found_match = True
                         break
                 
                 if found_match:
                     continue
                 
+                # Check for workspace protocol in spec
+                if spec.startswith("workspace:"):
+                    # Find the workspace package
+                    for pkg_version, _, pkg_protocol in versions:
+                        if pkg_protocol == "workspace":
+                            result[dep_name] = "link:{}|{}".format(dep_name, pkg_version)
+                            found_match = True
+                            break
+                
+                if found_match:
+                    continue
+                
                 # No exact match, use the first one as fallback
-                pkg_version, _ = versions[0]
-                result[dep_name] = "{}@{}".format(dep_name, pkg_version)
+                pkg_version, _, pkg_protocol = versions[0]
+                if pkg_protocol == "workspace":
+                    result[dep_name] = "link:{}|{}".format(dep_name, pkg_version)
+                else:
+                    result[dep_name] = "{}@{}".format(dep_name, pkg_version)
                 continue
         
         # Last resort fallback - strip prefixes and ranges
