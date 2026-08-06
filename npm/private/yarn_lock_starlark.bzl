@@ -5,7 +5,7 @@ pnpm.parse_pnpm_lock_json() returns, allowing npm_translate_lock to work with
 Yarn projects without running pnpm import.
 """
 
-load(":pnp/yarn_berry_lock.bzl", "yarn_berry_lock")
+load("//npm/private/pnp:yarn_berry_lock.bzl", "yarn_berry_lock")
 
 def _parse_package_specifier(specifier):
     """Parse a Yarn specifier like 'lodash@npm:4.17.21' into (name, version, protocol).
