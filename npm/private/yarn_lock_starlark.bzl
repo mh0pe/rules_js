@@ -222,16 +222,16 @@ def _parse_yarn_lock_json(yarn_lock_json, no_dev = False, no_optional = False):
         
         if link_type == "soft":
             # Workspace package - add to importers
-            name, version, _ = _parse_package_specifier(resolution)
+            name, version, protocol = _parse_package_specifier(resolution)
             
             deps = entry.get("dependencies", {})
             dev_deps = {}
             opt_deps = entry.get("optionalDependencies", {})
             
-            if version.startswith("workspace:"):
-                importer_path = version.replace("workspace:", "")
-                if importer_path in ("*", "^", "~"):
-                    importer_path = "."
+            # For workspace: protocol, version is already the path (e.g., "packages/api-local")
+            # For other soft links, use "." as fallback
+            if protocol == "workspace":
+                importer_path = version if version and version not in ("*", "^", "~") else "."
             else:
                 importer_path = "."
             
