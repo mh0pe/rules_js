@@ -82,10 +82,12 @@ def _hex_to_base64(hex_str):
         low = _HEX_VALUES.get(hex_str[i + 1], 0)
         bytes_list.append(high * 16 + low)
     
-    # Convert bytes to base64
+    # Convert bytes to base64 - process 3 bytes at a time
     result = []
-    i = 0
-    while i < len(bytes_list):
+    num_triplets = (len(bytes_list) + 2) // 3  # Ceiling division
+    for triplet_idx in range(num_triplets):
+        i = triplet_idx * 3
+        
         # Get up to 3 bytes
         b0 = bytes_list[i] if i < len(bytes_list) else 0
         b1 = bytes_list[i + 1] if i + 1 < len(bytes_list) else 0
@@ -107,8 +109,6 @@ def _hex_to_base64(hex_str):
             result.append(_B64_CHARS[n & 63])
         else:
             result.append("=")
-        
-        i += 3
     
     return "".join(result)
 
