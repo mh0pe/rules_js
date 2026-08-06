@@ -80,23 +80,69 @@ def _convert_dependencies(deps_dict, lock_entries, descriptors):
     
     Returns a dict mapping package name -> pnpm key (name@version).
     The transitive_closure.bzl expects the values to be full package keys.
+    
+    Yarn Berry v10+ lockfiles may not include range descriptors when only one
+    package references a dependency with a range. We handle this by falling
+    back to finding the package by name in entries.
     """
     result = {}
+    
+    # Build a map from package name -> list of (version, resolution) for fallback
+    name_to_versions = {}
+    for resolution, entry in lock_entries.items():
+        pkg_name, pkg_version, _ = _parse_package_specifier(resolution)
+        if pkg_name not in name_to_versions:
+            name_to_versions[pkg_name] = []
+        name_to_versions[pkg_name].append((pkg_version, resolution))
+    
     for name, spec in deps_dict.items():
+        # Try exact descriptor lookup first
         descriptor = "{}@{}".format(name, spec)
         resolution = descriptors.get(descriptor)
+        
         if resolution:
             entry = lock_entries.get(resolution)
             if entry:
-                version = entry.get("version", spec)
-                # Return the full pnpm key: name@version
+                version = entry.get("version", "")
                 result[name] = "{}@{}".format(name, version)
+                continue
+        
+        # Fallback: find the package by name in entries
+        # This handles cases where Yarn v10 optimizes away range descriptors
+        if name in name_to_versions:
+            versions = name_to_versions[name]
+            if len(versions) == 1:
+                # Only one version of this package - use it
+                pkg_version, _ = versions[0]
+                result[name] = "{}@{}".format(name, pkg_version)
+                continue
             else:
-                # No entry found - construct key from name and spec
-                result[name] = "{}@{}".format(name, spec)
-        else:
-            # No descriptor found - construct key from name and spec
-            result[name] = "{}@{}".format(name, spec)
+                # Multiple versions - try to match the spec
+                # Strip npm: prefix and range chars to find matching version
+                clean_spec = spec
+                if clean_spec.startswith("npm:"):
+                    clean_spec = clean_spec[4:]
+                
+                # Try exact version match first
+                for pkg_version, _ in versions:
+                    if pkg_version == clean_spec or clean_spec == pkg_version:
+                        result[name] = "{}@{}".format(name, pkg_version)
+                        break
+                else:
+                    # No exact match, use the first one as fallback
+                    # (This is a best-effort guess)
+                    pkg_version, _ = versions[0]
+                    result[name] = "{}@{}".format(name, pkg_version)
+                continue
+        
+        # Last resort fallback - strip prefixes and ranges
+        clean_spec = spec
+        if clean_spec.startswith("npm:"):
+            clean_spec = clean_spec[4:]
+        if clean_spec.startswith("^") or clean_spec.startswith("~"):
+            clean_spec = clean_spec[1:]
+        result[name] = "{}@{}".format(name, clean_spec)
+    
     return result
 
 def _resolution_to_tarball_url(name, version, resolution):
