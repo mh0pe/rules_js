@@ -124,15 +124,19 @@ def _convert_dependencies(deps_dict, lock_entries, descriptors):
                     clean_spec = clean_spec[4:]
                 
                 # Try exact version match first
+                found_match = False
                 for pkg_version, _ in versions:
-                    if pkg_version == clean_spec or clean_spec == pkg_version:
+                    if pkg_version == clean_spec:
                         result[name] = "{}@{}".format(name, pkg_version)
+                        found_match = True
                         break
-                else:
-                    # No exact match, use the first one as fallback
-                    # (This is a best-effort guess)
-                    pkg_version, _ = versions[0]
-                    result[name] = "{}@{}".format(name, pkg_version)
+                
+                if found_match:
+                    continue
+                
+                # No exact match, use the first one as fallback
+                pkg_version, _ = versions[0]
+                result[name] = "{}@{}".format(name, pkg_version)
                 continue
         
         # Last resort fallback - strip prefixes and ranges
