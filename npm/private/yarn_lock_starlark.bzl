@@ -289,7 +289,9 @@ def _parse_yarn_lock_json(yarn_lock_json, no_dev = False, no_optional = False):
                 "os": os,
             }
             
-            if protocol == "patch":
+            # Only track real user patches, not Yarn's built-in optional patches
+            # Built-in patches have "#optional!builtin" or similar in the version
+            if protocol == "patch" and "builtin" not in version:
                 patched_dependencies[name] = {
                     "path": version,
                     "hash": checksum,
