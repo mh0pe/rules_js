@@ -169,8 +169,8 @@ WARNING: Cannot determine home directory in order to load home `.npmrc` file in 
         exclude_package_contents_config = exclude_package_contents_config,
     )
 
-    # attr.pnpm_lock.repo_name is a canonical repository name, so it needs to be qualified with an extra '@'.
-    link_workspace = "@" + attr.pnpm_lock.repo_name
+    # state.pnpm_lock_label().repo_name is a canonical repository name, so it needs to be qualified with an extra '@'.
+    link_workspace = "@" + state.pnpm_lock_label().repo_name
 
     for i in imports:
         npm_import(
