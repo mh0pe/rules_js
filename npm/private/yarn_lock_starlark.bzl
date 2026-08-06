@@ -78,8 +78,11 @@ def _yarn_checksum_to_integrity(checksum):
 def _convert_dependencies(deps_dict, lock_entries, descriptors):
     """Convert Yarn dependency map to pnpm format.
     
-    Returns a dict mapping package name -> pnpm key (name@version).
+    Returns a dict mapping dependency name -> pnpm key (package_name@version).
     The transitive_closure.bzl expects the values to be full package keys.
+    
+    Note: For aliased dependencies (like react-helmet-async -> @slorber/react-helmet-async),
+    the key is the alias name, but the value is the actual package key.
     
     Yarn Berry v10+ lockfiles may not include range descriptors when only one
     package references a dependency with a range. We handle this by falling
@@ -95,26 +98,28 @@ def _convert_dependencies(deps_dict, lock_entries, descriptors):
             name_to_versions[pkg_name] = []
         name_to_versions[pkg_name].append((pkg_version, resolution))
     
-    for name, spec in deps_dict.items():
+    for dep_name, spec in deps_dict.items():
         # Try exact descriptor lookup first
-        descriptor = "{}@{}".format(name, spec)
+        descriptor = "{}@{}".format(dep_name, spec)
         resolution = descriptors.get(descriptor)
         
         if resolution:
             entry = lock_entries.get(resolution)
             if entry:
-                version = entry.get("version", "")
-                result[name] = "{}@{}".format(name, version)
+                # Parse the resolution to get the actual package name and version
+                # This handles aliased packages correctly
+                pkg_name, pkg_version, _ = _parse_package_specifier(resolution)
+                result[dep_name] = "{}@{}".format(pkg_name, pkg_version)
                 continue
         
         # Fallback: find the package by name in entries
         # This handles cases where Yarn v10 optimizes away range descriptors
-        if name in name_to_versions:
-            versions = name_to_versions[name]
+        if dep_name in name_to_versions:
+            versions = name_to_versions[dep_name]
             if len(versions) == 1:
                 # Only one version of this package - use it
                 pkg_version, _ = versions[0]
-                result[name] = "{}@{}".format(name, pkg_version)
+                result[dep_name] = "{}@{}".format(dep_name, pkg_version)
                 continue
             else:
                 # Multiple versions - try to match the spec
@@ -127,7 +132,7 @@ def _convert_dependencies(deps_dict, lock_entries, descriptors):
                 found_match = False
                 for pkg_version, _ in versions:
                     if pkg_version == clean_spec:
-                        result[name] = "{}@{}".format(name, pkg_version)
+                        result[dep_name] = "{}@{}".format(dep_name, pkg_version)
                         found_match = True
                         break
                 
@@ -136,7 +141,7 @@ def _convert_dependencies(deps_dict, lock_entries, descriptors):
                 
                 # No exact match, use the first one as fallback
                 pkg_version, _ = versions[0]
-                result[name] = "{}@{}".format(name, pkg_version)
+                result[dep_name] = "{}@{}".format(dep_name, pkg_version)
                 continue
         
         # Last resort fallback - strip prefixes and ranges
@@ -145,7 +150,7 @@ def _convert_dependencies(deps_dict, lock_entries, descriptors):
             clean_spec = clean_spec[4:]
         if clean_spec.startswith("^") or clean_spec.startswith("~"):
             clean_spec = clean_spec[1:]
-        result[name] = "{}@{}".format(name, clean_spec)
+        result[dep_name] = "{}@{}".format(dep_name, clean_spec)
     
     return result
 
