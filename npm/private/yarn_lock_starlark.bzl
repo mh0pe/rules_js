@@ -119,7 +119,7 @@ def _parse_yarn_lock_json(yarn_lock_json, no_dev = False, no_optional = False):
     if metadata == None:
         return {}, {}, {}, "yarn.lock has no __metadata block; only Yarn Berry lockfiles are supported"
     
-    version = metadata.get("version", "")
+    version = str(metadata.get("version", ""))
     supported_versions = ["6", "8", "10"]  # Yarn 3.x, 4.0-4.12, 4.18+
     if version not in supported_versions:
         return {}, {}, {}, "yarn.lock metadata version {} is not supported (supported: {})".format(version, ", ".join(supported_versions))
