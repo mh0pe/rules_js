@@ -57,85 +57,6 @@ def _resolution_to_pnpm_key(resolution):
     else:
         return "{}@{}".format(name, version)
 
-# Base64 encoding table
-_B64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-
-# Hex char to int lookup
-_HEX_VALUES = {
-    "0": 0, "1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7,
-    "8": 8, "9": 9, "a": 10, "b": 11, "c": 12, "d": 13, "e": 14, "f": 15,
-    "A": 10, "B": 11, "C": 12, "D": 13, "E": 14, "F": 15,
-}
-
-def _hex_to_base64(hex_str):
-    """Convert a hex string to base64 encoding.
-    
-    This is a pure Starlark implementation since binascii/base64 aren't available.
-    """
-    # Convert hex to bytes (as list of integers 0-255)
-    if len(hex_str) % 2 != 0:
-        hex_str = "0" + hex_str
-    
-    bytes_list = []
-    for i in range(0, len(hex_str), 2):
-        high = _HEX_VALUES.get(hex_str[i], 0)
-        low = _HEX_VALUES.get(hex_str[i + 1], 0)
-        bytes_list.append(high * 16 + low)
-    
-    # Convert bytes to base64 - process 3 bytes at a time
-    result = []
-    num_triplets = (len(bytes_list) + 2) // 3  # Ceiling division
-    for triplet_idx in range(num_triplets):
-        i = triplet_idx * 3
-        
-        # Get up to 3 bytes
-        b0 = bytes_list[i] if i < len(bytes_list) else 0
-        b1 = bytes_list[i + 1] if i + 1 < len(bytes_list) else 0
-        b2 = bytes_list[i + 2] if i + 2 < len(bytes_list) else 0
-        
-        # Combine into 24 bits
-        n = (b0 << 16) | (b1 << 8) | b2
-        
-        # Extract 4 base64 characters
-        result.append(_B64_CHARS[(n >> 18) & 63])
-        result.append(_B64_CHARS[(n >> 12) & 63])
-        
-        if i + 1 < len(bytes_list):
-            result.append(_B64_CHARS[(n >> 6) & 63])
-        else:
-            result.append("=")
-        
-        if i + 2 < len(bytes_list):
-            result.append(_B64_CHARS[n & 63])
-        else:
-            result.append("=")
-    
-    return "".join(result)
-
-def _yarn_checksum_to_integrity(checksum):
-    """Convert Yarn checksum format to integrity hash.
-    
-    Yarn stores checksums as "10c0/<sha512 hex>" where:
-    - "10c0" is the algorithm identifier (SHA-512)
-    - After the "/" is the SHA-512 hash in hexadecimal (128 chars)
-    
-    We convert this to the standard "sha512-<base64>" format that npm expects.
-    """
-    if not checksum:
-        return None
-    
-    # Extract hex part after the "/" 
-    # Format: "10c0/<hex>" or just "<hex>"
-    if "/" in checksum:
-        parts = checksum.split("/", 1)
-        if len(parts) == 2:
-            checksum = parts[1]
-    
-    # Convert hex to base64
-    b64 = _hex_to_base64(checksum)
-    
-    return "sha512-" + b64
-
 def _convert_dependencies(deps_dict, lock_entries, descriptors):
     """Convert Yarn dependency map to pnpm format.
     
@@ -314,7 +235,10 @@ def _parse_yarn_lock_json(yarn_lock_json, no_dev = False, no_optional = False):
                 continue
             
             checksum = entry.get("checksum")
-            integrity = _yarn_checksum_to_integrity(checksum)
+            # NOTE: Yarn's checksums (10c0/<hex>) are computed over unpacked package
+            # contents, NOT the npm tarball. They cannot be used for npm_import integrity.
+            # We provide the tarball URL instead and let rules_js download without
+            # integrity verification (it may fetch integrity from the npm registry).
             
             deps = entry.get("dependencies", {})
             opt_deps = entry.get("optionalDependencies", {})
@@ -335,10 +259,8 @@ def _parse_yarn_lock_json(yarn_lock_json, no_dev = False, no_optional = False):
             
             pnpm_key = "{}@{}".format(name, version)
             
-            resolution_info = {
-                "integrity": integrity,
-            }
             tarball_url = _resolution_to_tarball_url(name, version, resolution)
+            resolution_info = {}
             if tarball_url:
                 resolution_info["tarball"] = tarball_url
             
