@@ -76,7 +76,11 @@ def _yarn_checksum_to_integrity(checksum):
     return "sha512-" + checksum
 
 def _convert_dependencies(deps_dict, lock_entries, descriptors):
-    """Convert Yarn dependency map to pnpm format."""
+    """Convert Yarn dependency map to pnpm format.
+    
+    Returns a dict mapping package name -> pnpm key (name@version).
+    The transitive_closure.bzl expects the values to be full package keys.
+    """
     result = {}
     for name, spec in deps_dict.items():
         descriptor = "{}@{}".format(name, spec)
@@ -84,11 +88,15 @@ def _convert_dependencies(deps_dict, lock_entries, descriptors):
         if resolution:
             entry = lock_entries.get(resolution)
             if entry:
-                result[name] = entry.get("version", spec)
+                version = entry.get("version", spec)
+                # Return the full pnpm key: name@version
+                result[name] = "{}@{}".format(name, version)
             else:
-                result[name] = spec
+                # No entry found - construct key from name and spec
+                result[name] = "{}@{}".format(name, spec)
         else:
-            result[name] = spec
+            # No descriptor found - construct key from name and spec
+            result[name] = "{}@{}".format(name, spec)
     return result
 
 def _resolution_to_tarball_url(name, version, resolution):
